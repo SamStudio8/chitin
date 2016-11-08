@@ -13,9 +13,9 @@ test_requirements = [
 ]
 
 setuptools.setup(
-    name="labbook",
+    name="chitin",
     version="0.0.1",
-    url="https://github.com/samstudio8/labbook",
+    url="https://github.com/samstudio8/chitin",
 
     description="",
     long_description="",
@@ -33,7 +33,7 @@ setuptools.setup(
 
     entry_points = {
         'console_scripts': [
-            'chitin = lab:shell',
+            'chitin = chitin:shell',
         ]
     },
 
