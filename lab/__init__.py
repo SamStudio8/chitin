@@ -39,7 +39,7 @@ def shell():
                 cmd_str = prompt(u'===> ',
                         history=history,
                         auto_suggest=AutoSuggestFromHistory(),
-                        completer=SystemCompleter(),
+                        completer=PathCompleter(),
                         lexer=PygmentsLexer(BashLexer),
                         get_bottom_toolbar_tokens=get_bottom_toolbar_tokens,
                         style=style,
