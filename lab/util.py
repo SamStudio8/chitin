@@ -1,8 +1,12 @@
+import getpass
 import hashlib
 import json
 import os
 import sys
+import time
 import warnings
+
+from datetime import datetime
 
 def get_records():
     records = {}
@@ -20,18 +24,32 @@ def get_file_record(path):
     path = os.path.abspath(path)
     return records.get(path, None)
 
-def add_file_record(path, digest, cmd_str):
+def add_file_record(path, digest, cmd_str, usage=False):
     records = get_records()
     fn = os.path.expanduser('~') + '/.lab.json'
     fh = open(fn, "w+")
     if path not in records:
         records[path] = {
             "digest": digest,
-            "tasks": [cmd_str]
+            "history": [],
+            "usage": [],
         }
     else:
-        records[path]["digest"] = digest
-        records[path]["tasks"].append(cmd_str)
+        if usage:
+            records[path]["usage"].append({
+                "cmd": cmd_str,
+                "digest": digest,
+                "timestamp": int(time.mktime(datetime.now().timetuple())),
+                "user": getpass.getuser(),
+            })
+        else:
+            records[path]["digest"] = digest
+            records[path]["history"].append({
+                "cmd": cmd_str,
+                "digest": digest,
+                "timestamp": int(time.mktime(datetime.now().timetuple())),
+                "user": getpass.getuser(),
+            })
 
     fh.write(json.dumps(records))
     fh.close()
@@ -48,16 +66,19 @@ def manage_file_integrity(fields, cmd_str=None):
         if os.path.exists(abspath):
             #TODO Check dirs and contents too...
             if os.path.isfile(abspath):
-                h = hashfile(open(abspath, 'rb'), hashlib.md5())
+                h = hashfile(abspath)
                 frec = records.get(abspath, None)
                 if frec:
                     if frec["digest"] != h:
                         if not cmd_str:
-                            warnings.warn("\nFile '%s' EDITED outside of lab book..." % abspath)
-                            add_file_record(abspath, h, "EDITED")
+                            warnings.warn("\nFile '%s' MODIFIED outside of lab book..." % abspath)
+                            add_file_record(abspath, h, "MODIFIED")
                         else:
                             add_file_record(abspath, h, cmd_str)
-                            messages.append("UPDATED %s\n" % abspath)
+                            messages.append("MODIFIED %s\n" % abspath)
+                    elif cmd_str:
+                        # No change, at start of program
+                        add_file_record(abspath, h, cmd_str, usage=True)
                 else:
                     if not cmd_str:
                         warnings.warn("\nFile '%s' CREATED outside of lab book..." % abspath)
@@ -74,10 +95,14 @@ def manage_file_integrity(fields, cmd_str=None):
                 messages.append("DELETED %s\n" % abspath)
     return messages
 
-def hashfile(f, halg, bs=65536):
+def hashfile(path, halg=hashlib.md5, bs=65536):
+    f = open(path, 'rb')
     buff = f.read(bs)
+    halg = halg()
+    halg.update(buff)
     while len(buff) > 0:
-        halg.update(buff)
         buff = f.read(bs)
+        halg.update(buff)
+    f.close()
     return halg.hexdigest()
 

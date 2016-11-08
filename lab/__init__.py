@@ -1,4 +1,4 @@
-import time
+import os
 import subprocess
 import sys
 
@@ -48,26 +48,20 @@ def shell():
                 )
             fields = cmd_str.split(" ")
 
-            # Determine files and locations to watch for changes before and after exec
+            inputs = {}
             for field_i, field in enumerate(fields):
-                # Skip non-file looking things...
-                if field[0] == "-":
-                    continue
+                abspath = os.path.abspath(field)
+                if os.path.isfile(abspath):
+                    fields[field_i] = abspath
+                    inputs[abspath] = util.hashfile(abspath)
             util.manage_file_integrity(fields)
 
             # Replace the cmd_str
             cmd_str = " ".join(fields)
 
-            metadata = {
-                "cmd_str": cmd_str,
-                "timestamp": int(time.mktime(datetime.now().timetuple())),
-                "params": {
-                    "unparsed": ""
-                },
-            }
-
             # EXECUTE
             #####################################
+            print(inputs)
             try:
                 p = subprocess.check_output(cmd_str, shell=True)
                 print(p)
@@ -75,6 +69,12 @@ def shell():
                 pass
             #####################################
 
+            fields = cmd_str.split(" ")
+            for field_i, field in enumerate(fields):
+                abspath = os.path.abspath(field)
+                if os.path.isfile(abspath):
+                    fields[field_i] = abspath
+            cmd_str = " ".join(fields)
             messages = util.manage_file_integrity(fields, cmd_str)
             message = "\n".join(messages)
 
@@ -89,8 +89,22 @@ def history(file_path):
     if not f:
         print("No history.")
     else:
-        for task in f["tasks"]:
-            print(task)
+        for key in ["history", "usage"]:
+            print(key.upper())
+            lastdigest = None
+            for h in f[key]:
+                if lastdigest != h["digest"]:
+                    digest = h["digest"]
+                    lastdigest = digest
+                else:
+                    digest = (15*' ') + "''" + (15*' ')
+                print("%s\t%s\t%s\t%s" % (
+                    datetime.fromtimestamp(h["timestamp"]).strftime('%c'),
+                    h["user"],
+                    digest,
+                    h["cmd"],
+                ))
+        print("")
 
 if __name__ == "__main__":
     cli()
