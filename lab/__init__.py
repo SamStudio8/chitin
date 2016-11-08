@@ -7,7 +7,7 @@ from datetime import datetime
 import click
 from prompt_toolkit import prompt
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
-from prompt_toolkit.contrib.completers import SystemCompleter, PathCompleter
+from prompt_toolkit.contrib.completers import SystemCompleter
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.layout.lexers import PygmentsLexer
 from prompt_toolkit.styles import style_from_dict
@@ -31,6 +31,8 @@ def shell():
     style = style_from_dict({
         Token.Toolbar: '#ffffff bg:#333333',
     })
+    completer = SystemCompleter()
+    del completer.completers["executable"]
 
     try:
         while True:
@@ -39,7 +41,7 @@ def shell():
                 cmd_str = prompt(u'===> ',
                         history=history,
                         auto_suggest=AutoSuggestFromHistory(),
-                        completer=PathCompleter(),
+                        completer=completer,
                         lexer=PygmentsLexer(BashLexer),
                         get_bottom_toolbar_tokens=get_bottom_toolbar_tokens,
                         style=style,
