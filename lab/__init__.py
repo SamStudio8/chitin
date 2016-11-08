@@ -4,7 +4,6 @@ import sys
 
 from datetime import datetime
 
-import click
 from prompt_toolkit import prompt
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.contrib.completers import SystemCompleter
@@ -16,14 +15,35 @@ from pygments.lexers import BashLexer
 
 import util
 
-@click.group()
-def cli():
-    pass
+def history(file_path):
+    f = util.get_file_record(file_path)
+    if not f:
+        print("No history.")
+    else:
+        for key in ["history", "usage"]:
+            print(key.upper())
+            lastdigest = None
+            for h in f[key]:
+                if lastdigest != h["digest"]:
+                    digest = h["digest"]
+                    lastdigest = digest
+                else:
+                    digest = (15*' ') + "''" + (15*' ')
+                print("%s\t%s\t%s\t%s" % (
+                    datetime.fromtimestamp(h["timestamp"]).strftime('%c'),
+                    h["user"],
+                    digest,
+                    h["cmd"],
+                ))
+        print("")
 
-@cli.command(help="Open a lab shell")
 def shell():
-    history = InMemoryHistory()
-    message = ""
+    cmd_history = InMemoryHistory()
+    message = "Chitin v0.0.1"
+
+    special_commands = {
+        "history": history
+    }
 
     def get_bottom_toolbar_tokens(cli):
         return [(Token.Toolbar, ' '+message)]
@@ -39,7 +59,7 @@ def shell():
             cmd_str = ""
             while len(cmd_str.strip()) == 0:
                 cmd_str = prompt(u'===> ',
-                        history=history,
+                        history=cmd_history,
                         auto_suggest=AutoSuggestFromHistory(),
                         completer=completer,
                         lexer=PygmentsLexer(BashLexer),
@@ -47,6 +67,15 @@ def shell():
                         style=style,
                 )
             fields = cmd_str.split(" ")
+            if cmd_str[0] == '@' or cmd_str[0] == '%':
+                special_cmd = fields[0][1:]
+                if special_cmd in special_commands:
+                    try:
+                        special_commands[special_cmd](*fields[1:])
+                    except TypeError:
+                        print("Likely incorrect usage of '%s'" % special_cmd)
+                cmd_str=""
+                continue
 
             inputs = {}
             for field_i, field in enumerate(fields):
@@ -82,29 +111,5 @@ def shell():
         print("Bye!")
 
 
-@cli.command(help="List a file's history.")
-@click.argument("file_path")
-def history(file_path):
-    f = util.get_file_record(file_path)
-    if not f:
-        print("No history.")
-    else:
-        for key in ["history", "usage"]:
-            print(key.upper())
-            lastdigest = None
-            for h in f[key]:
-                if lastdigest != h["digest"]:
-                    digest = h["digest"]
-                    lastdigest = digest
-                else:
-                    digest = (15*' ') + "''" + (15*' ')
-                print("%s\t%s\t%s\t%s" % (
-                    datetime.fromtimestamp(h["timestamp"]).strftime('%c'),
-                    h["user"],
-                    digest,
-                    h["cmd"],
-                ))
-        print("")
-
 if __name__ == "__main__":
-    cli()
+    shell()

@@ -4,7 +4,6 @@
 import setuptools
 
 requirements = [
-    "click",
     "prompt_toolkit",
     "pygments",
 ]
@@ -34,7 +33,7 @@ setuptools.setup(
 
     entry_points = {
         'console_scripts': [
-            'lab = lab:cli',
+            'chitin = lab:shell',
         ]
     },
 
