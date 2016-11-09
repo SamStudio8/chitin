@@ -48,6 +48,16 @@ def history(file_path):
                     digest,
                     h["cmd"],
                 ))
+
+                if key == "history" and h.get("meta", None):
+                    for metacat in h["meta"]:
+                        for k,v in sorted(h["meta"][metacat].items(), key=lambda x:x[0]):
+                            print("%s*%s:%s\t%s" % (
+                                " " * 80,
+                                metacat,
+                                k,
+                                str(v)
+                            ))
             print("")
 
 def discover(path):
@@ -58,6 +68,9 @@ def discover(path):
         if status_code == "C":
             status_code = "A"
         util.write_status(path, status_code, cmd_str)
+
+def script(path):
+    abspath = os.path.abspath(path)
 
 def shell():
     cmd_history = InMemoryHistory()
@@ -110,7 +123,6 @@ def shell():
             token_p["dirs"].add(".")
             watched_dirs = token_p["dirs"]
             watched_files = token_p["files"]
-            cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
             # Check whether files have been altered outside of environment before proceeding
             for failed in util.check_integrity_set(watched_dirs | watched_files):
@@ -118,16 +130,15 @@ def shell():
 
             # EXECUTE
             #####################################
-            cmd_str = " ".join(fields)
-            parsed = False
+            cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
+            start_clock = datetime.now()
             try:
-                p = subprocess.check_output(cmd_str, shell=True)
+                p = subprocess.check_output(cmd_str + ' 2>&1', shell=True) #todo gross...
                 print(p)
-                if cmd.can_parse(fields[0]):
-                    ap = cmd.attempt_parse(fields[0], cmd_str, p)
-                    parsed = True
             except subprocess.CalledProcessError:
-                pass
+                continue
+            end_clock = datetime.now()
+            run_meta = {"wall": str(end_clock - start_clock)}
             #####################################
 
             # Update field tokens
@@ -137,34 +148,35 @@ def shell():
             new_files = token_p["files"] - watched_files
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
+            # Parse the output
+            #TODO New files won't yet have a file record so we can't use get_file_record in cmd.py
+            meta = {}
+            if cmd.can_parse(fields[0]):
+                ap = cmd.attempt_parse(fields[0], cmd_str, p)
+                meta["params"] = ap[0]
+                meta["stdout"] = ap[1]
+            meta["run"] = run_meta
+
             # Look for changes
             status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
             print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
             print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
 
-            f_cmd_str = [cmd_str]
-            if parsed:
-                f_cmd_str.append("\n" + " "*80) #lol
-                f_cmd_str.append(str(ap[0]))
-                f_cmd_str.append("\n" + " "*80)
-                f_cmd_str.append(str(ap[1]))
-            f_cmd_str = "".join(f_cmd_str)
 
             if status["codes"]["U"] != sum(status["codes"].values()):
-                for path, status_code in status["dirs"].items():
-                    util.write_status(path, status_code, f_cmd_str)
-                for path, status_code in status["files"].items():
-                    util.write_status(path, status_code, f_cmd_str)
+                for path, status_code in status["dirs"].items() + status["files"].items():
+                    usage = False
+                    if status_code == "U":
+                        usage = True
+                    util.write_status(path, status_code, cmd_str, usage=usage, meta=meta)
 
             for dup in status["dups"]:
                 util.add_file_record(dup, None, None, parent=status["dups"][dup])
 
 
-            message = "%s: %d files changed, %d created, %d deleted." % (
-                    cmd_str, status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
+            message = "%s (%s): %d files changed, %d created, %d deleted." % (
+                    cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
             )
-
-            #message = "\n".join(messages)
 
     except KeyboardInterrupt:
         print("Bye!")

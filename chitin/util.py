@@ -24,7 +24,7 @@ def get_file_record(path):
     path = os.path.abspath(path)
     return records.get(path, None)
 
-def write_status(path, status, cmd_str):
+def write_status(path, status, cmd_str, meta=None, usage=False):
     records = get_records()
     abspath = os.path.abspath(path)
 
@@ -36,7 +36,7 @@ def write_status(path, status, cmd_str):
     else:
         h = 0
 
-    add_file_record(abspath, h, "%s %s" % (status, cmd_str))
+    add_file_record(abspath, h, "%s %s" % (status, cmd_str), meta=meta, usage=usage)
 
 def get_status(path, cmd_str=""):
     records = get_records()
@@ -73,7 +73,7 @@ def get_status(path, cmd_str=""):
 
     return (status, h, last_h)
 
-def add_file_record(path, digest, cmd_str, usage=False, parent=None):
+def add_file_record(path, digest, cmd_str, usage=False, parent=None, meta=None):
     records = get_records()
     fn = os.path.expanduser('~') + '/.lab.json'
     fh = open(fn, "w+")
@@ -89,6 +89,7 @@ def add_file_record(path, digest, cmd_str, usage=False, parent=None):
             "digest": digest,
             "timestamp": int(time.mktime(datetime.now().timetuple())),
             "user": getpass.getuser(),
+            "meta": meta
         })
     else:
         if usage:
@@ -107,6 +108,7 @@ def add_file_record(path, digest, cmd_str, usage=False, parent=None):
                 "digest": digest,
                 "timestamp": int(time.mktime(datetime.now().timetuple())),
                 "user": getpass.getuser(),
+                "meta": meta
             })
 
     fh.write(json.dumps(records))
