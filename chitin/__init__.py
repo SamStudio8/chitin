@@ -61,6 +61,7 @@ def shell():
     del completer.completers["executable"]
 
     try:
+        util.check_and_update_path_set(set("."))
         while True:
             cmd_str = ""
             while len(cmd_str.strip()) == 0:
@@ -93,9 +94,7 @@ def shell():
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
             # Check whether files have been altered outside of environment
-            for item in (watched_files | watched_dirs):
-                if util.check_integrity(item):
-                    print("[WARN] '%s' has been modified outside of lab book." % item)
+            util.check_and_update_path_set(watched_dirs | watched_files)
 
             # EXECUTE
             #####################################
@@ -115,17 +114,7 @@ def shell():
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
             # Look for changes
-            for item in (watched_files | watched_dirs | new_files | new_dirs):
-                if os.path.isdir(item):
-                    for subitem in os.listdir(item):
-                        i_abspath = os.path.join(item, subitem)
-                        if os.path.isdir(i_abspath):
-                            util.changed_record(i_abspath, cmd_str)
-                        else:
-                            #TODO Do we want to keep a record of the files of subfolders?
-                            pass
-                elif os.path.isfile(item):
-                    util.changed_record(i_abspath, cmd_str)
+            util.check_and_update_path_set(watched_dirs | watched_files | new_files | new_dirs, cmd_str=cmd_str)
 
             #message = "\n".join(messages)
 

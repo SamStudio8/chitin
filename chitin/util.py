@@ -38,7 +38,6 @@ def changed_record(path, cmd_str=""):
         if path_record:
             # Path exists and we knew about it
             if path_record["digest"] != h:
-                print abspath, path_record["digest"], h
                 add_file_record(abspath, h, "MODIFIED by %s" % cmd_str)
             else:
                 add_file_record(abspath, h, "%s" % cmd_str, usage=True)
@@ -155,3 +154,27 @@ def hashfiles(paths, halg=hashlib.md5, bs=65536):
     for path in sorted(paths):
         tot_halg.update(hashfile(path, halg=halg, bs=bs))
     return tot_halg.hexdigest()
+
+def check_and_update_path_set(path_set, cmd_str=""):
+    for item in path_set:
+        if check_integrity(item):
+            print("[WARN] '%s' has been modified outside of lab book." % item)
+        if os.path.isdir(item):
+            for subitem in os.listdir(item):
+                i_abspath = os.path.join(item, subitem)
+                if os.path.isdir(i_abspath):
+                    changed_record(i_abspath, cmd_str)
+                    if check_integrity(i_abspath):
+                        print("[WARN] '%s' has been modified outside of lab book." % i_abspath)
+
+                    for subsubitem in os.listdir(i_abspath):
+                        j_abspath = os.path.join(i_abspath, subsubitem)
+                        if os.path.isfile(j_abspath):
+                            if check_integrity(j_abspath):
+                                print("[WARN] '%s' has been modified outside of lab book." % j_abspath)
+                else:
+                    #TODO Do we want to keep a record of the files of subfolders?
+                    if check_integrity(i_abspath):
+                        print("[WARN] '%s' has been modified outside of lab book." % i_abspath)
+        elif os.path.isfile(item):
+            changed_record(i_abspath, cmd_str)
