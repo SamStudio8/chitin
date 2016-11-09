@@ -26,8 +26,14 @@ def history(file_path):
         else:
             print("No such path.")
     else:
+        if f["parent"]:
+            print("PARENT RECORD: %s\n" % f["parent"])
         for key in ["history", "usage"]:
             print(key.upper())
+            if len(f[key]) == 0:
+                print("No recorded %s" % key)
+                continue
+
             lastdigest = None
             for h in f[key]:
                 if lastdigest != h["digest"]:
@@ -43,12 +49,22 @@ def history(file_path):
                 ))
             print("")
 
+def discover(path):
+    abspath = os.path.abspath(path)
+    status = util.check_status_path_set(set(abspath))
+    print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status.items(), key=lambda s: s[0]) if v!='U']))
+    for path, status_code in status.items():
+        if status_code == "C":
+            status_code = "A"
+        util.write_status(path, status_code, cmd_str)
+
 def shell():
     cmd_history = InMemoryHistory()
     message = "Chitin v0.0.1"
 
     special_commands = {
-        "history": history
+        "history": history,
+        #"discover": discover,
     }
 
     def get_bottom_toolbar_tokens(cli):
@@ -60,8 +76,10 @@ def shell():
     completer = SystemCompleter()
     del completer.completers["executable"]
 
+    # Check whether files in and around the current directory have been changed...
+    for failed in util.check_integrity_set(set(".")):
+        print("[WARN] '%s' has been modified outside of lab book." % failed)
     try:
-        util.check_and_update_path_set(set("."))
         while True:
             cmd_str = ""
             while len(cmd_str.strip()) == 0:
@@ -93,8 +111,9 @@ def shell():
             watched_files = token_p["files"]
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
-            # Check whether files have been altered outside of environment
-            util.check_and_update_path_set(watched_dirs | watched_files)
+            # Check whether files have been altered outside of environment before proceeding
+            for failed in util.check_integrity_set(watched_dirs | watched_files):
+                print("[WARN] '%s' has been modified outside of lab book." % failed)
 
             # EXECUTE
             #####################################
@@ -114,7 +133,22 @@ def shell():
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
             # Look for changes
-            util.check_and_update_path_set(watched_dirs | watched_files | new_files | new_dirs, cmd_str=cmd_str)
+            status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
+            print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
+            print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
+
+            if status["codes"]["U"] != sum(status["codes"].values()):
+                for path, status_code in status["dirs"].items():
+                    util.write_status(path, status_code, cmd_str)
+                for path, status_code in status["files"].items():
+                    util.write_status(path, status_code, cmd_str)
+
+            for dup in status["dups"]:
+                util.add_file_record(dup, None, None, parent=status["dups"][dup])
+
+            message = "%s: %d files changed, %d created, %d deleted." % (
+                    cmd_str, status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
+            )
 
             #message = "\n".join(messages)
 
