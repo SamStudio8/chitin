@@ -18,7 +18,11 @@ import util
 def history(file_path):
     f = util.get_file_record(file_path)
     if not f:
-        print("No history.")
+        if os.path.exists(file_path):
+            if os.path.isfile(file_path):
+                print("No history.")
+        else:
+            print("No such path.")
     else:
         for key in ["history", "usage"]:
             print(key.upper())
@@ -35,7 +39,7 @@ def history(file_path):
                     digest,
                     h["cmd"],
                 ))
-        print("")
+            print("")
 
 def shell():
     cmd_history = InMemoryHistory()
@@ -67,6 +71,8 @@ def shell():
                         style=style,
                 )
             fields = cmd_str.split(" ")
+
+            # Special command handling
             if cmd_str[0] == '@' or cmd_str[0] == '%':
                 special_cmd = fields[0][1:]
                 if special_cmd in special_commands:
@@ -77,20 +83,21 @@ def shell():
                 cmd_str=""
                 continue
 
-            inputs = {}
-            for field_i, field in enumerate(fields):
-                abspath = os.path.abspath(field)
-                if os.path.isfile(abspath):
-                    fields[field_i] = abspath
-                    inputs[abspath] = util.hashfile(abspath)
-            util.manage_file_integrity(fields)
+            # Determine files and folders on which to watch for changes
+            token_p = util.parse_tokens(fields)
+            token_p["dirs"].add(".")
+            watched_dirs = token_p["dirs"]
+            watched_files = token_p["files"]
+            cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
-            # Replace the cmd_str
-            cmd_str = " ".join(fields)
+            # Check whether files have been altered outside of environment
+            for item in (watched_files | watched_dirs):
+                if util.check_integrity(item):
+                    print("[WARN] '%s' has been modified outside of lab book." % item)
 
             # EXECUTE
             #####################################
-            print(inputs)
+            cmd_str = " ".join(fields)
             try:
                 p = subprocess.check_output(cmd_str, shell=True)
                 print(p)
@@ -98,14 +105,22 @@ def shell():
                 pass
             #####################################
 
+            # Update field tokens
             fields = cmd_str.split(" ")
-            for field_i, field in enumerate(fields):
-                abspath = os.path.abspath(field)
-                if os.path.isfile(abspath):
-                    fields[field_i] = abspath
-            cmd_str = " ".join(fields)
-            messages = util.manage_file_integrity(fields, cmd_str)
-            message = "\n".join(messages)
+            token_p = util.parse_tokens(fields)
+            new_dirs = token_p["dirs"] - watched_dirs
+            new_files = token_p["files"] - watched_files
+            cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
+
+            # Look for changes
+            for item in (watched_files | watched_dirs):
+                util.changed_record(item, cmd_str)
+
+            # New files
+            for item in (new_files | new_dirs):
+                util.changed_record(item, cmd_str)
+
+            #message = "\n".join(messages)
 
     except KeyboardInterrupt:
         print("Bye!")
