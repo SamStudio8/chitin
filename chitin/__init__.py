@@ -13,6 +13,7 @@ from prompt_toolkit.styles import style_from_dict
 from prompt_toolkit.token import Token
 from pygments.lexers import BashLexer
 
+import cmd
 import util
 
 #TODO What about scripts? We could read them line by line for tokens...?
@@ -118,9 +119,13 @@ def shell():
             # EXECUTE
             #####################################
             cmd_str = " ".join(fields)
+            parsed = False
             try:
                 p = subprocess.check_output(cmd_str, shell=True)
                 print(p)
+                if cmd.can_parse(fields[0]):
+                    ap = cmd.attempt_parse(fields[0], cmd_str, p)
+                    parsed = True
             except subprocess.CalledProcessError:
                 pass
             #####################################
@@ -137,14 +142,23 @@ def shell():
             print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
             print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
 
+            f_cmd_str = [cmd_str]
+            if parsed:
+                f_cmd_str.append("\n" + " "*80) #lol
+                f_cmd_str.append(str(ap[0]))
+                f_cmd_str.append("\n" + " "*80)
+                f_cmd_str.append(str(ap[1]))
+            f_cmd_str = "".join(f_cmd_str)
+
             if status["codes"]["U"] != sum(status["codes"].values()):
                 for path, status_code in status["dirs"].items():
-                    util.write_status(path, status_code, cmd_str)
+                    util.write_status(path, status_code, f_cmd_str)
                 for path, status_code in status["files"].items():
-                    util.write_status(path, status_code, cmd_str)
+                    util.write_status(path, status_code, f_cmd_str)
 
             for dup in status["dups"]:
                 util.add_file_record(dup, None, None, parent=status["dups"][dup])
+
 
             message = "%s: %d files changed, %d created, %d deleted." % (
                     cmd_str, status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]

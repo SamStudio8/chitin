@@ -258,7 +258,7 @@ def check_status_path_set(path_set):
         if file_statii[path] == "C":
             for hpath in hashes:
                 if hashes[path][0] == hashes[hpath][1] and hpath != path:
-                    moves[path] = "%s (%s)" % (hpath, hashes[hpath][1])
+                    moves[path] = "%s (%s)" % (hpath, hashes[hpath][1]) #todo did I break it
 
     return {
         "dirs": dir_statii,
