@@ -15,6 +15,8 @@ from pygments.lexers import BashLexer
 
 import util
 
+#TODO What about scripts? We could read them line by line for tokens...?
+
 def history(file_path):
     f = util.get_file_record(file_path)
     if not f:
@@ -113,12 +115,17 @@ def shell():
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
             # Look for changes
-            for item in (watched_files | watched_dirs):
-                util.changed_record(item, cmd_str)
-
-            # New files
-            for item in (new_files | new_dirs):
-                util.changed_record(item, cmd_str)
+            for item in (watched_files | watched_dirs | new_files | new_dirs):
+                if os.path.isdir(item):
+                    for subitem in os.listdir(item):
+                        i_abspath = os.path.join(item, subitem)
+                        if os.path.isdir(i_abspath):
+                            util.changed_record(i_abspath, cmd_str)
+                        else:
+                            #TODO Do we want to keep a record of the files of subfolders?
+                            pass
+                elif os.path.isfile(item):
+                    util.changed_record(i_abspath, cmd_str)
 
             #message = "\n".join(messages)
 

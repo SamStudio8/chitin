@@ -46,7 +46,7 @@ def changed_record(path, cmd_str=""):
             # Path exists but it is a surprise
             add_file_record(abspath, h, "CREATED by %s" % cmd_str)
     elif abspath in records:
-        add_file_record(abspath, h, "DELETED by %s" % cmd_str)
+        add_file_record(abspath, 0, "DELETED by %s" % cmd_str)
 
 def add_file_record(path, digest, cmd_str, usage=False):
     records = get_records()
