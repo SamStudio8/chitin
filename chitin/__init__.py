@@ -16,8 +16,6 @@ from pygments.lexers import BashLexer
 import cmd
 import util
 
-#TODO What about scripts? We could read them line by line for tokens...?
-
 def history(file_path):
     f = util.get_file_record(file_path)
     if not f:
@@ -128,6 +126,10 @@ def shell():
             for failed in util.check_integrity_set(watched_dirs | watched_files):
                 print("[WARN] '%s' has been modified outside of lab book." % failed)
 
+            # Check whether any named files have results (usages) attached to files that
+            # haven't been signed off...?
+            pass
+
             # EXECUTE
             #####################################
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
@@ -168,6 +170,8 @@ def shell():
                     usage = False
                     if status_code == "U":
                         usage = True
+                        if path not in fields:
+                            continue
                     util.write_status(path, status_code, cmd_str, usage=usage, meta=meta)
 
             for dup in status["dups"]:
