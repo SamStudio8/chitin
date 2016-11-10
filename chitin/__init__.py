@@ -134,12 +134,18 @@ def shell():
             #####################################
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
             start_clock = datetime.now()
-            try:
-                p = subprocess.check_output(cmd_str + ' 2>&1', shell=True) #todo gross...
-                print(p)
-            except subprocess.CalledProcessError:
-                continue
+
+            proc = subprocess.Popen(cmd_str, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = proc.communicate()
             end_clock = datetime.now()
+
+            print(stdout)
+            print(stderr)
+
+            if proc.returncode > 0:
+                # Should probably still check tokens and such...
+                continue
+
             run_meta = {"wall": str(end_clock - start_clock)}
             #####################################
 
@@ -154,9 +160,10 @@ def shell():
             #TODO New files won't yet have a file record so we can't use get_file_record in cmd.py
             meta = {}
             if cmd.can_parse(fields[0]):
-                ap = cmd.attempt_parse(fields[0], cmd_str, p)
+                ap = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
                 meta["params"] = ap[0]
                 meta["stdout"] = ap[1]
+                meta["stdout"] = ap[2]
             meta["run"] = run_meta
 
             # Look for changes

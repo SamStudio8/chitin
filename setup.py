@@ -6,6 +6,8 @@ import setuptools
 requirements = [
     "prompt_toolkit",
     "pygments",
+    "SQLAlchemy",
+    "flask_sqlalchemy"
 ]
 
 test_requirements = [

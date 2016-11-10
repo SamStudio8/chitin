@@ -69,8 +69,14 @@ def bowtie_cmd(fields):
         meta["leftover"].append(field)
 
     return meta
+def find_stderr(lines):
+    return {
+    }
 
 def bowtie_stdout(lines):
+    return {
+    }
+def bowtie_stderr(lines):
     lines = [l for l in lines.split("\n") if len(l.strip()) > 0]
     return {
         "alignment": float(lines[-1].split("%")[0].strip())
@@ -80,11 +86,13 @@ def bowtie_stdout(lines):
 find_job = {
     "cmd_handler": find_cmd,
     "stdout_handler": find_stdout,
+    "stderr_handler": find_stderr,
 }
 
 bowtie_job = {
     "cmd_handler": bowtie_cmd,
     "stdout_handler": bowtie_stdout,
+    "stderr_handler": bowtie_stderr,
 }
 
 
@@ -96,7 +104,7 @@ handlers = {
 def can_parse(command):
     return command in handlers
 
-def attempt_parse(command, cmd_str, output):
+def attempt_parse(command, cmd_str, stdout, stderr):
     if command not in handlers:
         return
 
@@ -114,6 +122,7 @@ def attempt_parse(command, cmd_str, output):
 
     return (
             handlers[command]["cmd_handler"](cmd_str.split(" ")[1:]),
-            handlers[command]["stdout_handler"](output)
+            handlers[command]["stdout_handler"](stdout),
+            handlers[command]["stderr_handler"](stderr)
     )
 
