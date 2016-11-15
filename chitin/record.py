@@ -72,6 +72,9 @@ class ItemEvent(db.Model):
             h = util.hashfile(abspath)
         elif os.path.isdir(abspath):
             h = util.hashfiles([os.path.join(abspath,f) for f in os.listdir(abspath) if os.path.isfile(os.path.join(abspath,f))])
+        else:
+            #???
+            h = 0
         self.hash = h
 
 db.create_all()

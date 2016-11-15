@@ -39,7 +39,7 @@ def write_status(path, status, cmd_str, meta=None, usage=False, uuid=None):
     else:
         h = 0
 
-    add_file_record(abspath, h, cmd_str, meta=meta, usage=status, uuid=uuid)
+    add_file_record(abspath, h, cmd_str, meta=meta, status=status, uuid=uuid)
 
 def get_status(path, cmd_str=""):
     records = get_records()
@@ -76,7 +76,7 @@ def get_status(path, cmd_str=""):
 
     return (status, h, last_h)
 
-def add_file_record(path, digest, cmd_str, usage=False, parent=None, meta=None, uuid=None):
+def add_file_record(path, digest, cmd_str, status=False, parent=None, meta=None, uuid=None):
     records = get_records()
     fn = os.path.expanduser('~') + '/.lab.json'
     fh = open(fn, "w+")
@@ -109,15 +109,17 @@ def add_file_record(path, digest, cmd_str, usage=False, parent=None, meta=None, 
                     datum = record.Metadatum(event, mcat, key, meta[mcat][key])
                     record.db.session.add(datum)
 
-    itemevent = record.ItemEvent(item, event, usage)
+    itemevent = record.ItemEvent(item, event, status)
     record.db.session.add(itemevent)
 
-    t_meta = attempt_parse_type(item.path)
-    if t_meta:
-        for key in t_meta:
-            datum = record.Metadatum(event, "type", key, t_meta[key])
-            record.db.session.add(datum)
-
+    if status != 'D':
+        #NOTE This is a pretty hacky way of getting around accidentally handling
+        #     files that have been deleted.
+        f_meta = attempt_parse_type(item.path)
+        if f_meta:
+            for key in f_meta:
+                datum = record.Metadatum(event, item.path, key, f_meta[key])
+                record.db.session.add(datum)
 
     records[path]["digest"] = digest
     records[path]["history"].append({
