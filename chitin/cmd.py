@@ -105,16 +105,16 @@ handlers = {
 
 def vcf_handler(path):
     from subprocess import check_output
-    p = check_output("grep -vc '^#' %s" % path, shell=True)
     try:
+        p = check_output("grep -vc '^#' %s" % path, shell=True)
         return {"snp_n": p.split("\n")[0].strip()}
     except:
         return {}
 
 def bam_handler(path):
     from subprocess import check_output
-    p = check_output("samtools view -c %s" % path, shell=True)
     try:
+        p = check_output("samtools view -c %s" % path, shell=True)
         return {"read_n": p.split("\n")[0].strip()}
     except:
         return {}
