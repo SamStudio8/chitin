@@ -9,6 +9,7 @@ import warnings
 from datetime import datetime
 
 import record
+from cmd import attempt_parse_type
 
 def get_records():
     records = {}
@@ -91,36 +92,41 @@ def add_file_record(path, digest, cmd_str, usage=False, parent=None, meta=None, 
         record.db.session.commit()
 
     item = record.Item.query.filter(record.Item.path==path)[0]
-    if parent:
-        records[path]["parent"] = parent
-    else:
-        event = None
-        if uuid:
-            try:
-                event = record.Event.query.filter(record.Event.uuid==str(uuid))[0]
-            except IndexError as e:
-                pass
+    event = None
+    if uuid:
+        try:
+            event = record.Event.query.filter(record.Event.uuid==str(uuid))[0]
+        except IndexError as e:
+            pass
 
-        if not event:
-            event = record.Event(cmd_str, str(uuid))
-            record.db.session.add(event)
-            if meta:
-                for mcat in meta:
-                    for key in meta[mcat]:
-                        datum = record.Metadatum(event, mcat, key, meta[mcat][key])
-                        record.db.session.add(datum)
+    if not event:
+        event = record.Event(cmd_str, str(uuid))
+        record.db.session.add(event)
 
-        itemevent = record.ItemEvent(item, event, usage)
-        record.db.session.add(itemevent)
+        if meta:
+            for mcat in meta:
+                for key in meta[mcat]:
+                    datum = record.Metadatum(event, mcat, key, meta[mcat][key])
+                    record.db.session.add(datum)
 
-        records[path]["digest"] = digest
-        records[path]["history"].append({
-            "cmd": cmd_str,
-            "digest": digest,
-            "timestamp": int(time.mktime(datetime.now().timetuple())),
-            "user": getpass.getuser(),
-            "meta": meta
-        })
+    itemevent = record.ItemEvent(item, event, usage)
+    record.db.session.add(itemevent)
+
+    t_meta = attempt_parse_type(item.path)
+    if t_meta:
+        for key in t_meta:
+            datum = record.Metadatum(event, "type", key, t_meta[key])
+            record.db.session.add(datum)
+
+
+    records[path]["digest"] = digest
+    records[path]["history"].append({
+        "cmd": cmd_str,
+        "digest": digest,
+        "timestamp": int(time.mktime(datetime.now().timetuple())),
+        "user": getpass.getuser(),
+        "meta": meta
+    })
 
     fh.write(json.dumps(records))
     fh.close()

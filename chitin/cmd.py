@@ -101,6 +101,28 @@ handlers = {
     "bowtie2": bowtie_job
 }
 
+
+def vcf_handler(path):
+    from subprocess import check_output
+    p = check_output("grep -vc '^#' %s" % path, shell=True)
+    try:
+        return {"snp_n": p.split("\n")[0].strip()}
+    except:
+        return {}
+
+type_watchers = {
+    "vcf": vcf_handler
+}
+
+def attempt_parse_type(path):
+    for t in type_watchers:
+        if path.lower().endswith("." + t):
+            ret = type_watchers[t](path)
+            ret["handler"] = t
+            return ret
+    return {}
+
+
 def can_parse(command):
     return command in handlers
 

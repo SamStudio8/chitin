@@ -249,8 +249,9 @@ def shell():
                             continue
                     util.write_status(path, status_code, cmd_str, usage=usage, meta=meta, uuid=cmd_uuid)
 
-            for dup in status["dups"]:
-                util.add_file_record(dup, None, None, parent=status["dups"][dup])
+            #TODO Commented out for now as %needed can now follow cp and mv
+            #for dup in status["dups"]:
+            #    util.add_file_record(dup, None, None, parent=status["dups"][dup])
 
 
             message = "%s (%s): %d files changed, %d created, %d deleted." % (
