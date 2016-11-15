@@ -8,6 +8,8 @@ import warnings
 
 from datetime import datetime
 
+import record
+
 def get_records():
     records = {}
     try:
@@ -20,11 +22,11 @@ def get_records():
     return records
 
 def get_file_record(path):
-    records = get_records()
     path = os.path.abspath(path)
-    return records.get(path, None)
+    item = record.Item.query.filter(record.Item.path==path)[0]
+    return item
 
-def write_status(path, status, cmd_str, meta=None, usage=False):
+def write_status(path, status, cmd_str, meta=None, usage=False, uuid=None):
     records = get_records()
     abspath = os.path.abspath(path)
 
@@ -36,7 +38,7 @@ def write_status(path, status, cmd_str, meta=None, usage=False):
     else:
         h = 0
 
-    add_file_record(abspath, h, "%s %s" % (status, cmd_str), meta=meta, usage=usage)
+    add_file_record(abspath, h, cmd_str, meta=meta, usage=status, uuid=uuid)
 
 def get_status(path, cmd_str=""):
     records = get_records()
@@ -73,17 +75,45 @@ def get_status(path, cmd_str=""):
 
     return (status, h, last_h)
 
-def add_file_record(path, digest, cmd_str, usage=False, parent=None, meta=None):
+def add_file_record(path, digest, cmd_str, usage=False, parent=None, meta=None, uuid=None):
     records = get_records()
     fn = os.path.expanduser('~') + '/.lab.json'
     fh = open(fn, "w+")
     if path not in records:
+        item = record.Item(path)
         records[path] = {
             "digest": digest,
             "history": [],
             "usage": [],
             "parent": None,
         }
+        record.db.session.add(item)
+        record.db.session.commit()
+
+    item = record.Item.query.filter(record.Item.path==path)[0]
+    if parent:
+        records[path]["parent"] = parent
+    else:
+        event = None
+        if uuid:
+            try:
+                event = record.Event.query.filter(record.Event.uuid==str(uuid))[0]
+            except IndexError as e:
+                pass
+
+        if not event:
+            event = record.Event(cmd_str, str(uuid))
+            record.db.session.add(event)
+            if meta:
+                for mcat in meta:
+                    for key in meta[mcat]:
+                        datum = record.Metadatum(event, mcat, key, meta[mcat][key])
+                        record.db.session.add(datum)
+
+        itemevent = record.ItemEvent(item, event, usage)
+        record.db.session.add(itemevent)
+
+        records[path]["digest"] = digest
         records[path]["history"].append({
             "cmd": cmd_str,
             "digest": digest,
@@ -91,28 +121,10 @@ def add_file_record(path, digest, cmd_str, usage=False, parent=None, meta=None):
             "user": getpass.getuser(),
             "meta": meta
         })
-    else:
-        if usage:
-            records[path]["usage"].append({
-                "cmd": cmd_str,
-                "digest": digest,
-                "timestamp": int(time.mktime(datetime.now().timetuple())),
-                "user": getpass.getuser(),
-            })
-        elif parent:
-            records[path]["parent"] = parent
-        else:
-            records[path]["digest"] = digest
-            records[path]["history"].append({
-                "cmd": cmd_str,
-                "digest": digest,
-                "timestamp": int(time.mktime(datetime.now().timetuple())),
-                "user": getpass.getuser(),
-                "meta": meta
-            })
 
     fh.write(json.dumps(records))
     fh.close()
+    record.db.session.commit()
 
 def check_integrity_set(path_set):
     failed = []

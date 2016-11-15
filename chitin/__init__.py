@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import uuid
 
 from datetime import datetime
 
@@ -25,38 +26,100 @@ def history(file_path):
         else:
             print("No such path.")
     else:
-        if f["parent"]:
-            print("PARENT RECORD: %s\n" % f["parent"])
-        for key in ["history", "usage"]:
-            print(key.upper())
-            if len(f[key]) == 0:
-                print("No recorded %s" % key)
+        print f.path
+        event_sets = {
+            "actions": f.events.filter(record.ItemEvent.result_type!='U'),
+            "usage": f.events.filter(record.ItemEvent.result_type=='U')
+        }
+
+        for e_set in ["actions", "usage"]:
+            print e_set.upper()
+            for j in event_sets[e_set]:
+                print "{}\t{}\t{}\t{}\t{}".format(
+                    j.event.timestamp.strftime("%c"),
+                    j.event.user,
+                    j.hash,
+                    j.result_type,
+                    j.event.cmd,
+                )
+                for m in j.event.meta.all():
+                    print "{}{}\t{}\t{}".format(
+                        " " * 80,
+                        m.category,
+                        m.key,
+                        m.value
+                    )
+                for m in j.event.items.all():
+                    print "{}{}\t{}".format(
+                        " " * 80,
+                        m.item.path,
+                        m.hash,
+                    )
+            print ""
+
+def how(path, hash):
+    abspath = os.path.abspath(path)
+    item = None
+    try:
+        ie = record.ItemEvent.query.join(record.Item).filter(record.ItemEvent.hash==hash, record.Item.path==abspath)[0]
+    except IndexError:
+        print "Not found..."
+        return
+
+    print "{}\t{}\t{}\t{}\t{}".format(
+        ie.event.timestamp.strftime("%c"),
+        ie.event.user,
+        ie.hash,
+        ie.result_type,
+        ie.event.cmd,
+    )
+    for m in ie.event.meta.all():
+        print "{}{}\t{}\t{}".format(
+            " " * 80,
+            m.category,
+            m.key,
+            m.value
+        )
+    for m in ie.event.items.all():
+        print "{}{}\t{}".format(
+            " " * 80,
+            m.item.path,
+            m.hash,
+        )
+
+def needed(path, hash):
+    abspath = os.path.abspath(path)
+    item = None
+    try:
+        ie = record.ItemEvent.query.join(record.Item).filter(record.ItemEvent.hash==hash, record.Item.path==abspath)[0]
+    except IndexError:
+        print "Not found..."
+        return
+
+    crit_paths = [i.item.path for i in ie.event.items.all()]
+    events = [ie.event]
+    uuids = set()
+    needed_ies = []
+    while len(events) > 0:
+        event = events.pop()
+        if event.uuid in uuids:
+            continue
+        uuids.add(event.uuid)
+        for ie in event.items.all():
+            if os.path.isdir(ie.item.path):
                 continue
 
-            lastdigest = None
-            for h in f[key]:
-                if lastdigest != h["digest"]:
-                    digest = h["digest"]
-                    lastdigest = digest
-                else:
-                    digest = (15*' ') + "''" + (15*' ')
-                print("%s\t%s\t%s\t%s" % (
-                    datetime.fromtimestamp(h["timestamp"]).strftime('%c'),
-                    h["user"],
-                    digest,
-                    h["cmd"],
-                ))
+            if ie.result_type != 'U' and ie.item.path in crit_paths:
+                needed_ies.append("%s (%s)\n\t%s" % (ie.item.path, ie.hash, ie.event.cmd))
+                crit_paths.extend([i.item.path for i in ie.event.items.all()] )
 
-                if key == "history" and h.get("meta", None):
-                    for metacat in h["meta"]:
-                        for k,v in sorted(h["meta"][metacat].items(), key=lambda x:x[0]):
-                            print("%s*%s:%s\t%s" % (
-                                " " * 80,
-                                metacat,
-                                k,
-                                str(v)
-                            ))
-            print("")
+            try:
+                events.append(record.ItemEvent.query.join(record.Item).filter(record.ItemEvent.hash==ie.hash, record.Item.path==ie.item.path, record.ItemEvent.result_type!='U')[0].event)
+            except IndexError:
+                pass
+
+    for ie in reversed(needed_ies):
+        print ie
 
 def discover(path):
     abspath = os.path.abspath(path)
@@ -77,6 +140,8 @@ def shell():
     special_commands = {
         "history": history,
         #"discover": discover,
+        "how": how,
+        "needed": needed,
     }
 
     def get_bottom_toolbar_tokens(cli):
@@ -111,7 +176,8 @@ def shell():
                 if special_cmd in special_commands:
                     try:
                         special_commands[special_cmd](*fields[1:])
-                    except TypeError:
+                    except TypeError as e:
+                        print e
                         print("Likely incorrect usage of '%s'" % special_cmd)
                 cmd_str=""
                 continue
@@ -132,6 +198,7 @@ def shell():
 
             # EXECUTE
             #####################################
+            cmd_uuid = uuid.uuid4()
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
             start_clock = datetime.now()
 
@@ -141,6 +208,7 @@ def shell():
 
             print(stdout)
             print(stderr)
+            print(cmd_uuid)
 
             if proc.returncode > 0:
                 # Should probably still check tokens and such...
@@ -179,7 +247,7 @@ def shell():
                         usage = True
                         if path not in fields:
                             continue
-                    util.write_status(path, status_code, cmd_str, usage=usage, meta=meta)
+                    util.write_status(path, status_code, cmd_str, usage=usage, meta=meta, uuid=cmd_uuid)
 
             for dup in status["dups"]:
                 util.add_file_record(dup, None, None, parent=status["dups"][dup])
