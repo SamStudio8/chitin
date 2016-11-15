@@ -9,7 +9,7 @@ import warnings
 from datetime import datetime
 
 import record
-from cmd import attempt_parse_type
+from cmd import attempt_parse_type, attempt_integrity_type
 
 def get_records():
     records = {}
@@ -134,11 +134,13 @@ def add_file_record(path, digest, cmd_str, status=False, parent=None, meta=None,
     fh.close()
     record.db.session.commit()
 
-def check_integrity_set(path_set):
+def check_integrity_set(path_set, file_tokens=None):
+    if not file_tokens:
+        file_tokens = []
     failed = []
     for item in path_set:
         item = os.path.abspath(item)
-        if check_integrity(item):
+        if check_integrity(item, is_token=item in file_tokens):
             failed.append(item)
 
         if os.path.isdir(item):
@@ -150,23 +152,30 @@ def check_integrity_set(path_set):
 
                     for subsubitem in os.listdir(i_abspath):
                         j_abspath = os.path.join(i_abspath, subsubitem)
+                        if j_abspath in path_set:
+                            continue
                         if os.path.isfile(j_abspath):
-                            if check_integrity(j_abspath):
+                            if check_integrity(j_abspath, is_token=j_abspath in file_tokens):
                                 failed.append(j_abspath)
                 else:
                     #TODO Do we want to keep a record of the files of subfolders?
-                    if check_integrity(i_abspath):
+                    if i_abspath in path_set:
+                        continue
+                    if check_integrity(i_abspath, is_token=i_abspath in file_tokens):
                         failed.append(i_abspath)
     return sorted(failed)
 
-def check_integrity(path):
+def check_integrity(path, is_token=False):
     records = get_records()
     abspath = os.path.abspath(path)
+    broken_integrity = False
+    broken_rules = {}
 
     if os.path.exists(abspath):
         path_record = records.get(abspath, None)
         if os.path.isfile(abspath):
             h = hashfile(abspath)
+            broken_rules = attempt_integrity_type(path)
         elif os.path.isdir(abspath):
             h = hashfiles([os.path.join(abspath,f) for f in os.listdir(abspath) if os.path.isfile(os.path.join(abspath,f))])
 
@@ -174,16 +183,22 @@ def check_integrity(path):
             # Path exists and we knew about it
             if path_record["digest"] != h:
                 add_file_record(abspath, h, "MODIFIED by (?)")
-                return True
-            return False
+                broken_integrity = True
         else:
             # Path exists but it is a surprise
             add_file_record(abspath, h, "CREATED by (?)")
-            return True
+            broken_integrity = True
     elif abspath in records:
         add_file_record(abspath, h, "DELETED by (?)")
-        return True
-    return False
+        broken_integrity = True
+
+    #TODO I don't want this here but I can't be bothered to move it right now
+    if is_token:
+        for rule, result in broken_rules.items():
+            if not result and result is not None:
+                print "[WARN] %s %s" % (path, rule[1])
+
+    return broken_integrity
 
 def parse_tokens(fields):
     dirs_l = []

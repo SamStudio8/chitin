@@ -1,4 +1,5 @@
 import re
+import os
 
 
 def find_stdout(lines):
@@ -110,14 +111,62 @@ def vcf_handler(path):
     except:
         return {}
 
+def bam_handler(path):
+    from subprocess import check_output
+    p = check_output("samtools view -c %s" % path, shell=True)
+    try:
+        return {"read_n": p.split("\n")[0].strip()}
+    except:
+        return {}
+
+def bam_integ_handler(path):
+    from subprocess import check_output
+
+    reads = 0
+    try:
+        p = check_output("samtools view -c %s" % path, shell=True)
+        reads = int(p.split("\n")[0].strip())
+    except Exception as e:
+        print e
+        pass
+
+    has_index = False
+    has_ood_index = None
+    if os.path.exists(path + ".bai"):
+        has_index = True
+        if os.path.getmtime(path) > os.path.getmtime(path + ".bai"):
+            has_ood_index = True
+        else:
+            has_ood_index = False
+
+    return {
+        ("has_reads", "has 0 reads"): reads > 0,
+        ("has_index", "has no BAI"): has_index,
+        ("has_ood_index", "has a BAI older than itself"): has_ood_index,
+    }
+
+
 type_watchers = {
-    "vcf": vcf_handler
+    "vcf": vcf_handler,
+    "bam": bam_handler,
+}
+
+type_integrity = {
+    "bam": bam_integ_handler,
 }
 
 def attempt_parse_type(path):
     for t in type_watchers:
         if path.lower().endswith("." + t):
             ret = type_watchers[t](path)
+            ret["handler"] = t
+            return ret
+    return {}
+
+def attempt_integrity_type(path):
+    for t in type_integrity:
+        if path.lower().endswith("." + t):
+            ret = type_integrity[t](path)
             ret["handler"] = t
             return ret
     return {}

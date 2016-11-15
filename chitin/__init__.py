@@ -189,7 +189,7 @@ def shell():
             watched_files = token_p["files"]
 
             # Check whether files have been altered outside of environment before proceeding
-            for failed in util.check_integrity_set(watched_dirs | watched_files):
+            for failed in util.check_integrity_set(watched_dirs | watched_files, file_tokens=token_p["files"]):
                 print("[WARN] '%s' has been modified outside of lab book." % failed)
 
             # Check whether any named files have results (usages) attached to files that
