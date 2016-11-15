@@ -18,6 +18,12 @@ class Item(db.Model):
     def __init__(self, path):
         self.path = os.path.abspath(path)
 
+    def get_last_digest(self):
+        try:
+            return self.events.all()[-1].hash
+        except IndexError:
+            return None
+
 #todo gross
 class Metadatum(db.Model):
     id = db.Column(db.Integer, primary_key=True)

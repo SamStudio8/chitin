@@ -11,24 +11,15 @@ from datetime import datetime
 import record
 from cmd import attempt_parse_type, attempt_integrity_type
 
-def get_records():
-    records = {}
-    try:
-        fn = os.path.expanduser('~') + '/.lab.json'
-        fh = open(fn, "r")
-        records = json.loads("\n".join(fh.readlines()))
-        fh.close()
-    except IOError, ValueError:
-        pass
-    return records
-
 def get_file_record(path):
     path = os.path.abspath(path)
-    item = record.Item.query.filter(record.Item.path==path)[0]
+    try:
+        item = record.Item.query.filter(record.Item.path==path)[0]
+    except IndexError:
+        return None
     return item
 
 def write_status(path, status, cmd_str, meta=None, usage=False, uuid=None):
-    records = get_records()
     abspath = os.path.abspath(path)
 
     if os.path.exists(abspath):
@@ -42,13 +33,12 @@ def write_status(path, status, cmd_str, meta=None, usage=False, uuid=None):
     add_file_record(abspath, h, cmd_str, meta=meta, status=status, uuid=uuid)
 
 def get_status(path, cmd_str=""):
-    records = get_records()
     abspath = os.path.abspath(path)
 
     status = None
     last_h = 0
+    path_record = get_file_record(abspath)
     if os.path.exists(abspath):
-        path_record = records.get(abspath, None)
         if os.path.isfile(abspath):
             h = hashfile(abspath)
         elif os.path.isdir(abspath):
@@ -56,42 +46,32 @@ def get_status(path, cmd_str=""):
 
         if path_record:
             try:
-                last_h = path_record["history"][-1]["digest"]
+                last_h = path_record.get_last_digest()
             except IndexError:
                 pass
 
             # Path exists and we knew about it
-            if path_record["digest"] != h:
+            if path_record.get_last_digest() != h:
                 status = "M"
             else:
                 status = "U"
         else:
             # Path exists but it is a surprise
             status = "C"
-    elif abspath in records:
+    elif path_record:
         h = 0
-        path_record = records.get(abspath, None)
-        last_h = path_record["history"][-1]["digest"]
+        last_h = path_record.get_last_digest()
         status = "D"
 
     return (status, h, last_h)
 
 def add_file_record(path, digest, cmd_str, status=False, parent=None, meta=None, uuid=None):
-    records = get_records()
-    fn = os.path.expanduser('~') + '/.lab.json'
-    fh = open(fn, "w+")
-    if path not in records:
+    item = get_file_record(path)
+    if not item:
         item = record.Item(path)
-        records[path] = {
-            "digest": digest,
-            "history": [],
-            "usage": [],
-            "parent": None,
-        }
         record.db.session.add(item)
         record.db.session.commit()
 
-    item = record.Item.query.filter(record.Item.path==path)[0]
     event = None
     if uuid:
         try:
@@ -121,17 +101,6 @@ def add_file_record(path, digest, cmd_str, status=False, parent=None, meta=None,
                 datum = record.Metadatum(event, item.path, key, f_meta[key])
                 record.db.session.add(datum)
 
-    records[path]["digest"] = digest
-    records[path]["history"].append({
-        "cmd": cmd_str,
-        "digest": digest,
-        "timestamp": int(time.mktime(datetime.now().timetuple())),
-        "user": getpass.getuser(),
-        "meta": meta
-    })
-
-    fh.write(json.dumps(records))
-    fh.close()
     record.db.session.commit()
 
 def check_integrity_set(path_set, file_tokens=None):
@@ -166,13 +135,12 @@ def check_integrity_set(path_set, file_tokens=None):
     return sorted(failed)
 
 def check_integrity(path, is_token=False):
-    records = get_records()
     abspath = os.path.abspath(path)
     broken_integrity = False
     broken_rules = {}
 
+    path_record = get_file_record(abspath)
     if os.path.exists(abspath):
-        path_record = records.get(abspath, None)
         if os.path.isfile(abspath):
             h = hashfile(abspath)
             broken_rules = attempt_integrity_type(path)
@@ -181,14 +149,14 @@ def check_integrity(path, is_token=False):
 
         if path_record:
             # Path exists and we knew about it
-            if path_record["digest"] != h:
+            if path_record.get_last_digest() != h:
                 add_file_record(abspath, h, "MODIFIED by (?)")
                 broken_integrity = True
         else:
             # Path exists but it is a surprise
             add_file_record(abspath, h, "CREATED by (?)")
             broken_integrity = True
-    elif abspath in records:
+    elif path_record:
         add_file_record(abspath, h, "DELETED by (?)")
         broken_integrity = True
 
