@@ -27,7 +27,7 @@ Because I am not a very organised bioinformatician, and despite your best effort
 ## How does it work?
 Installing the Python package gives you the executable `chitin`, which launches the `chitin` pseudo-shell. Entered commands are executed underneath `chitin` by the system shell (probably `/bin/sh`). `chitin` attempts to keep track of files that are created, modified and deleted by each command, primarily by comparing their MD5 hashes and hammering members of Python's `os` module. A rather poor framework also permits the specification of handlers to be applied to the `stdout`, `stderr` and command strings of certain commands. It's also possible to specify handlers when certain file formats are encountered.
 
-#### Why not just...
+## Why not just...
 I've tried. I have scripts to generate inputs and results, but I forget to keep track of tweaks to them. Sometimes I try new data or parameters ad-hoc and forget to change them back, or make notes on why I made that change. Occasionally I have to edit files manually and can't easily document what I did. I never write down the data munging commands that I needed to co-erce a particular file through my pipeline that one time. I try and remember to take logs, but often they become detached from the output of the thing that they logged. I even went through a phase of just tarring up the entire directory for every shot at an experiment. None of this has proven effective for me.
 
 `chitin` might not either, but who knows.
