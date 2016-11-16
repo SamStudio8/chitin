@@ -8,7 +8,8 @@ from flask_sqlalchemy import SQLAlchemy
 import util
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////home/sam/Projects/Packages/lab/test.db'
+home = os.path.expanduser('~')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////' + home + '/.chitin.db'
 db = SQLAlchemy(app)
 
 class Item(db.Model):
