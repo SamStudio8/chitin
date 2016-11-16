@@ -17,7 +17,7 @@ Because I am not a very organised bioinformatician, and despite your best effort
 * Can identify certain file formats and store additional metadata on them automatically
     * *e.g.* How many reads appear in a BAM?
     * *e.g.* How many SNPs are called in a VCF?
-* Can describe the steps (commands, parames and inputs) to reach a given file
+* Can describe the steps (commands, params and inputs) to reach a given file
     * *e.g.* What commands should I run to recreate file `foo`?
 * Attempts to perform sanity checking of your working state
     * *e.g.* Has `foo` changed since it was last seen?
