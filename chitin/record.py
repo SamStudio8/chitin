@@ -10,6 +10,7 @@ import util
 app = Flask(__name__)
 home = os.path.expanduser('~')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////' + home + '/.chitin.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 db = SQLAlchemy(app)
 
 class Item(db.Model):

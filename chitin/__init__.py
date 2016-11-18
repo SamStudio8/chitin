@@ -17,6 +17,24 @@ from pygments.lexers import BashLexer
 import cmd
 import util
 
+WELCOME = """Chitin 0.0.1a: Curious Crustacean
+Please don't rely on the database schema to be the same tomorrow... <3
+
+Source and Issues   https://github.com/SamStudio8/chitin
+Documentation       https://chitin.readthedocs.io
+About               https://samnicholls.net/2016/11/16/disorganised-disaster/
+
+== What do? ==
+Execute one-liner commands as if this were your normal shell.
+Currently interactive and multi-line commands don't work, sorry about that.
+
+== Special Commands ==
+%history <path>         List complete history for a given path
+%how <path> <md5>       List history for given path and a particular hash
+%needed <path> <md5>    List required commands and files to generate a file hash
+
+"""
+
 def history(file_path):
     f = util.get_file_record(file_path)
     if not f:
@@ -135,6 +153,7 @@ def script(path):
 
 def shell():
     cmd_history = InMemoryHistory()
+    print(WELCOME)
     message = "Chitin v0.0.1"
 
     special_commands = {
