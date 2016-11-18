@@ -247,10 +247,8 @@ def shell():
             #TODO New files won't yet have a file record so we can't use get_file_record in cmd.py
             meta = {}
             if cmd.can_parse(fields[0]):
-                ap = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
-                meta["params"] = ap[0]
-                meta["stdout"] = ap[1]
-                meta["stdout"] = ap[2]
+                parsed_meta = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
+                meta.update(parsed_meta)
             meta["run"] = run_meta
 
             # Look for changes
