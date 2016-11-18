@@ -1,12 +1,18 @@
-# chitin
-#### *an awful shell for awful bioinformaticians*
+chitin
+======
+
+**an awful shell for awful bioinformaticians**
 
 `chitin` is a Python based wrapper around your system shell that attempts to keep track of commands and file manipulations to circumvent the problem of not knowing how any of the files in your ridiculously complicated bioinformatics pipeline came to be.
 
-## Why?
+Why?
+----
+
 Because I am not a very organised bioinformatician, and despite your best efforts, you probably aren't either.
 
-## What does it do?
+What does it do?
+----------------
+
 * Automatically keeps track of executed commands that yielded a change to the file system
     * Stores the command and information on the filesystem changes
 * Checks file formats against some simple rules
@@ -24,13 +30,22 @@ Because I am not a very organised bioinformatician, and despite your best effort
     * *e.g.* Are we about to clobber a file that has downstream importance?
     * *e.g.* Are any of our inputs malformed?
     
-## How does it work?
+How does it work?
+-----------------
+
 Installing the Python package gives you the executable `chitin`, which launches the `chitin` pseudo-shell. Entered commands are executed underneath `chitin` by the system shell (probably `/bin/sh`). `chitin` attempts to keep track of files that are created, modified and deleted by each command, primarily by comparing their MD5 hashes and hammering members of Python's `os` module. A rather poor framework also permits the specification of handlers to be applied to the `stdout`, `stderr` and command strings of certain commands. It's also possible to specify handlers when certain file formats are encountered.
 
-## Why not just...
+Why not just...
+---------------
+
 I've tried. I have scripts to generate inputs and results, but I forget to keep track of tweaks to them. Sometimes I try new data or parameters ad-hoc and forget to change them back, or make notes on why I made that change. Occasionally I have to edit files manually and can't easily document what I did. I never write down the data munging commands that I needed to co-erce a particular file through my pipeline that one time. I try and remember to take logs, but often they become detached from the output of the thing that they logged. I even went through a phase of just tarring up the entire directory for every shot at an experiment. None of this has proven effective for me.
 
 `chitin` might not either, but who knows.
 
-## Is `chitin` for me?
+Is `chitin` for me?
+-------------------
 Probably, but not yet. Thanks for taking an interest, but `chitin` is a little while away from stable.
+
+License
+-------
+`chitin` is distributed under the MIT license, see LICENSE.
