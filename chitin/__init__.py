@@ -300,7 +300,7 @@ def shell():
                     cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
             )
 
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, EOFError):
         print("Bye!")
 
 
