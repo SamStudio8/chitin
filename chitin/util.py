@@ -173,9 +173,14 @@ def parse_tokens(fields):
     file_l = []
     for field_i, field in enumerate(fields):
         abspath = os.path.abspath(field)
+
         if os.path.exists(abspath):
             fields[field_i] = abspath # Update the command to use the full abspath
+            dirs_l.append(os.path.dirname(abspath))
         else:
+            potential_dir = os.path.dirname(abspath)
+            if os.path.exists(potential_dir):
+                dirs_l.append(potential_dir)
             continue
 
         if os.path.isfile(abspath):
