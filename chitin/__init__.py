@@ -32,6 +32,7 @@ Currently interactive and multi-line commands don't work, sorry about that.
 %history <path>         List complete history for a given path
 %how <path> <md5>       List history for given path and a particular hash
 %needed <path> <md5>    List required commands and files to generate a file hash
+%hashdir <path> <md5>   List hashes of directory contents for a given dir hash
 
 """
 
@@ -105,6 +106,26 @@ def how(path, hash):
             m.hash,
         )
 
+def hashdir(path, hash):
+    abspath = os.path.abspath(path)
+    if not os.path.exists(abspath) or not os.path.isdir(abspath):
+        print("Not a valid directory?")
+        return
+
+    dir_ie_record = None
+    try:
+        dir_ie_record = record.ItemEvent.query.join(record.Item).filter(record.ItemEvent.hash==hash, record.Item.path==abspath)[0]
+    except IndexError:
+        print("Not a directory that I have encountered?")
+        return
+
+    # Get items that contain the abspath in their path, that have Events before the hash of the target directory
+    potential_item_set = record.ItemEvent.query.join(record.Item).filter(record.Item.path.like(abspath+'%')).join(record.Event).filter(record.Event.timestamp <= dir_ie_record.event.timestamp).group_by(record.Item.path).order_by(record.Item.path).all()
+
+    #TODO This is a gross workaround for not having the concept of ItemSets...
+    for ie in potential_item_set:
+        print "%s\t%s" % (ie.hash, ie.item.path)
+
 def needed(path, hash):
     abspath = os.path.abspath(path)
     item = None
@@ -161,6 +182,7 @@ def shell():
         #"discover": discover,
         "how": how,
         "needed": needed,
+        "hashdir": hashdir,
     }
 
     def get_bottom_toolbar_tokens(cli):
