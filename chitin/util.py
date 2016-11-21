@@ -143,7 +143,7 @@ def check_integrity(path, is_token=False):
     if os.path.exists(abspath):
         if os.path.isfile(abspath):
             h = hashfile(abspath)
-            broken_rules = attempt_integrity_type(path)
+            broken_rules = attempt_integrity_type(abspath)
         elif os.path.isdir(abspath):
             h = hashfiles([os.path.join(abspath,f) for f in os.listdir(abspath) if os.path.isfile(os.path.join(abspath,f))])
 
