@@ -106,6 +106,8 @@ def how(path, hash):
             m.hash,
         )
 
+#TODO Bonus points for allowing one to order by name or timestamp
+#TODO Additional bonus points for allowing one to ignore subdirs or not
 def hashdir(path, hash):
     abspath = os.path.abspath(path)
     if not os.path.exists(abspath) or not os.path.isdir(abspath):
@@ -124,7 +126,8 @@ def hashdir(path, hash):
 
     #TODO This is a gross workaround for not having the concept of ItemSets...
     for ie in potential_item_set:
-        print "%s\t%s" % (ie.hash, ie.item.path)
+        if ie.hash != '0':
+            print "%s\t%s" % (ie.hash, ie.item.path)
 
 def needed(path, hash):
     abspath = os.path.abspath(path)
