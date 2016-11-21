@@ -5,7 +5,7 @@ import uuid
 
 from datetime import datetime
 
-from prompt_toolkit import prompt
+from prompt_toolkit import prompt, AbortAction
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
 from prompt_toolkit.contrib.completers import SystemCompleter
 from prompt_toolkit.history import InMemoryHistory
@@ -211,6 +211,7 @@ def shell():
                         lexer=PygmentsLexer(BashLexer),
                         get_bottom_toolbar_tokens=get_bottom_toolbar_tokens,
                         style=style,
+                        on_abort=AbortAction.RETRY,
                 )
             fields = cmd_str.split(" ")
 
@@ -300,7 +301,7 @@ def shell():
                     cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
             )
 
-    except (KeyboardInterrupt, EOFError):
+    except EOFError:
         print("Bye!")
 
 
