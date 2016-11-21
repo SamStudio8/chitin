@@ -168,14 +168,26 @@ def check_integrity(path, is_token=False):
 
     return broken_integrity
 
-def parse_tokens(fields):
+def parse_tokens(fields, env_vars):
     dirs_l = []
     file_l = []
     for field_i, field in enumerate(fields):
+        for env_k in env_vars:
+            if '$' + env_k in field:
+                field = field.replace('$' + env_k, str(env_vars[env_k]))
+                fields[field_i] = field
+
+        had_semicolon = False
+        if field[-1] == ";":
+            has_semicolon = True
+            field = field.replace(";", "")
         abspath = os.path.abspath(field)
 
         if os.path.exists(abspath):
-            fields[field_i] = abspath # Update the command to use the full abspath
+            if had_semicolon:
+                fields[field_i] = abspath + ';' # Update the command to use the full abspath
+            else:
+                fields[field_i] = abspath # Update the command to use the full abspath
             dirs_l.append(os.path.dirname(abspath))
         else:
             potential_dir = os.path.dirname(abspath)

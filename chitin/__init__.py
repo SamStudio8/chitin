@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import sys
 import uuid
@@ -17,7 +18,8 @@ from pygments.lexers import BashLexer
 import cmd
 import util
 
-WELCOME = """Chitin 0.0.1a: Curious Crustacean
+VERSION = "Chitin 0.0.1a: Curious Crustacean"
+WELCOME = VERSION + """
 Please don't rely on the database schema to be the same tomorrow... <3
 
 Source and Issues   https://github.com/SamStudio8/chitin
@@ -33,6 +35,7 @@ Currently interactive and multi-line commands don't work, sorry about that.
 %how <path> <md5>       List history for given path and a particular hash
 %needed <path> <md5>    List required commands and files to generate a file hash
 %hashdir <path> <md5>   List hashes of directory contents for a given dir hash
+%script <path> [...]    Execute a bash script (very beta and awesomely grim)
 
 """
 
@@ -172,13 +175,168 @@ def discover(path):
             status_code = "A"
         util.write_status(path, status_code, cmd_str)
 
-def script(path):
-    abspath = os.path.abspath(path)
+def handle_command(fields, capture_variables, env_variables):
+        # Determine files and folders on which to watch for changes
+        token_p = util.parse_tokens(fields, env_variables)
+        token_p["dirs"].add(".")
+        watched_dirs = token_p["dirs"]
+        watched_files = token_p["files"]
 
+        captured = {}
+
+        # Check whether files have been altered outside of environment before proceeding
+        for failed in util.check_integrity_set(watched_dirs | watched_files, file_tokens=token_p["files"]):
+            print("[WARN] '%s' has been modified outside of lab book." % failed)
+
+        # Check whether any named files have results (usages) attached to files that
+        # haven't been signed off...?
+        pass
+
+        # EXECUTE
+        #####################################
+        cmd_uuid = uuid.uuid4()
+        cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
+        start_clock = datetime.now()
+
+        if capture_variables:
+            cmd_str = cmd_str + "; echo '#@CHITIN_SECRET@#'; set"
+            print cmd_str
+
+        proc = subprocess.Popen(
+                cmd_str,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=dict(os.environ).update(env_variables),
+        )
+        stdout, stderr = proc.communicate()
+        end_clock = datetime.now()
+
+        if capture_variables:
+            stdout_shards = re.split(r'(?!\')(#@CHITIN_SECRET@#)(?!\')', stdout)
+            stdout = stdout_shards[0]
+            try:
+                for l in "".join(stdout_shards[2]).split("\n"):
+                    try:
+                        l_f = l.split("=")
+                        if l_f[0] in capture_variables:
+                            captured[l_f[0]] = l_f[1]
+                    except:
+                        continue
+            except:
+                pass
+        print(stdout)
+        print(stderr)
+        print(cmd_uuid)
+
+        if proc.returncode > 0:
+            # Should probably still check tokens and such...
+            return
+
+        run_meta = {"wall": str(end_clock - start_clock)}
+        #####################################
+
+        # Update field tokens
+        fields = cmd_str.split(" ")
+        token_p = util.parse_tokens(fields, env_variables)
+        new_dirs = token_p["dirs"] - watched_dirs
+        new_files = token_p["files"] - watched_files
+        cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
+
+        # Parse the output
+        #TODO New files won't yet have a file record so we can't use get_file_record in cmd.py
+        meta = {}
+        if cmd.can_parse(fields[0]):
+            parsed_meta = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
+            meta.update(parsed_meta)
+        meta["run"] = run_meta
+
+        # Look for changes
+        status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
+        print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
+        print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
+
+
+        if status["codes"]["U"] != sum(status["codes"].values()):
+            for path, status_code in status["dirs"].items() + status["files"].items():
+                usage = False
+                if status_code == "U":
+                    usage = True
+                    if path not in fields:
+                        continue
+                util.write_status(path, status_code, cmd_str, usage=usage, meta=meta, uuid=cmd_uuid)
+
+        #TODO Commented out for now as %needed can now follow cp and mv
+        #for dup in status["dups"]:
+        #    util.add_file_record(dup, None, None, parent=status["dups"][dup])
+
+        message = "%s (%s): %d files changed, %d created, %d deleted." % (
+                cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
+        )
+
+        return {
+            "message": message,
+            "captured": captured
+        }
+
+
+def parse_script(path, *tokens):
+    def check_line(line):
+        if len(line.strip()) < 2:
+            return False
+        if line[0] == '#' and not line[1] == '@':
+            return False
+        return True
+    script_lines = [l.strip() for l in open(path).readlines() if check_line(l)]
+
+    # Split the blocks
+    blocks = []
+    current_block = []
+    current_block_variables = []
+    block_variables = []
+    in_block = False
+
+    for line in script_lines:
+        if line.startswith("#@CHITIN_START_BLOCK"):
+            if len(current_block) > 0:
+                blocks.append(current_block)
+                block_variables.append(current_block_variables)
+                current_block = []
+                current_block_variables = []
+            else:
+                in_block = True
+        elif line.startswith("#@CHITIN_END_BLOCK"):
+            if len(current_block) > 0:
+                blocks.append(current_block)
+                block_variables.append(current_block_variables)
+                current_block = []
+                current_block_variables = []
+            in_block = False
+
+        elif line.startswith("#@CHITIN_VARIABLE"):
+            v_fields = line.split(" ")
+            current_block_variables.append(v_fields[1])
+
+        else:
+            if in_block:
+                current_block.append(line)
+            else:
+                blocks.append([line])
+                block_variables.append([])
+
+    fixed_blocks = []
+    for b in blocks:
+        BLOCK_COMMAND = "; ".join(b)
+        for i, value in enumerate(tokens):
+            BLOCK_COMMAND = BLOCK_COMMAND.replace("$" + str(i+1), str(value))
+        fixed_blocks.append(BLOCK_COMMAND)
+    return fixed_blocks, block_variables
+
+    
 def shell():
     cmd_history = InMemoryHistory()
     print(WELCOME)
-    message = "Chitin v0.0.1"
+    message = VERSION
 
     special_commands = {
         "history": history,
@@ -186,6 +344,7 @@ def shell():
         "how": how,
         "needed": needed,
         "hashdir": hashdir,
+        "script": None,
     }
 
     def get_bottom_toolbar_tokens(cli):
@@ -213,93 +372,49 @@ def shell():
                         style=style,
                         on_abort=AbortAction.RETRY,
                 )
+
             fields = cmd_str.split(" ")
+            command_sets = [" ".join(fields)]
 
             # Special command handling
+            VARIABLES = {}
+            SKIP_RESET = False
             if cmd_str[0] == '@' or cmd_str[0] == '%':
                 special_cmd = fields[0][1:]
-                if special_cmd in special_commands:
+                if special_cmd == "script":
+                    SKIP_RESET = True
+                    command_sets, VARIABLES = parse_script(fields[1], *fields[2:])
+                elif special_cmd in special_commands:
                     try:
                         special_commands[special_cmd](*fields[1:])
                     except TypeError as e:
                         print e
                         print("Likely incorrect usage of '%s'" % special_cmd)
-                cmd_str=""
-                continue
 
-            # Determine files and folders on which to watch for changes
-            token_p = util.parse_tokens(fields)
-            token_p["dirs"].add(".")
-            watched_dirs = token_p["dirs"]
-            watched_files = token_p["files"]
+                if not SKIP_RESET:
+                    cmd_str=""
+                    continue
 
-            # Check whether files have been altered outside of environment before proceeding
-            for failed in util.check_integrity_set(watched_dirs | watched_files, file_tokens=token_p["files"]):
-                print("[WARN] '%s' has been modified outside of lab book." % failed)
+            captured = {}
+            for command_i, command in enumerate(command_sets):
+                #####################################
+                #TODO Do we need to parse the env secretly?
+                to_capture = []
+                try:
+                    to_capture = VARIABLES[command_i]
+                except:
+                    pass
+                handled = handle_command(command.split(" "), to_capture, captured)
 
-            # Check whether any named files have results (usages) attached to files that
-            # haven't been signed off...?
-            pass
+                if handled:
+                    if "message" in handled:
+                        message = handled["message"]
+                    else:
+                        message = VERSION
 
-            # EXECUTE
-            #####################################
-            cmd_uuid = uuid.uuid4()
-            cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
-            start_clock = datetime.now()
-
-            proc = subprocess.Popen(cmd_str, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = proc.communicate()
-            end_clock = datetime.now()
-
-            print(stdout)
-            print(stderr)
-            print(cmd_uuid)
-
-            if proc.returncode > 0:
-                # Should probably still check tokens and such...
-                continue
-
-            run_meta = {"wall": str(end_clock - start_clock)}
-            #####################################
-
-            # Update field tokens
-            fields = cmd_str.split(" ")
-            token_p = util.parse_tokens(fields)
-            new_dirs = token_p["dirs"] - watched_dirs
-            new_files = token_p["files"] - watched_files
-            cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
-
-            # Parse the output
-            #TODO New files won't yet have a file record so we can't use get_file_record in cmd.py
-            meta = {}
-            if cmd.can_parse(fields[0]):
-                parsed_meta = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
-                meta.update(parsed_meta)
-            meta["run"] = run_meta
-
-            # Look for changes
-            status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
-            print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
-            print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
-
-
-            if status["codes"]["U"] != sum(status["codes"].values()):
-                for path, status_code in status["dirs"].items() + status["files"].items():
-                    usage = False
-                    if status_code == "U":
-                        usage = True
-                        if path not in fields:
-                            continue
-                    util.write_status(path, status_code, cmd_str, usage=usage, meta=meta, uuid=cmd_uuid)
-
-            #TODO Commented out for now as %needed can now follow cp and mv
-            #for dup in status["dups"]:
-            #    util.add_file_record(dup, None, None, parent=status["dups"][dup])
-
-
-            message = "%s (%s): %d files changed, %d created, %d deleted." % (
-                    cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
-            )
+                    if "captured" in handled:
+                        captured.update(handled["captured"])
+                #####################################
 
     except EOFError:
         print("Bye!")
