@@ -175,7 +175,7 @@ def discover(path):
             status_code = "A"
         util.write_status(path, status_code, cmd_str)
 
-def handle_command(fields, capture_variables, env_variables):
+def handle_command(fields, capture_variables, env_variables, input_meta):
         # Determine files and folders on which to watch for changes
         token_p = util.parse_tokens(fields, env_variables)
         token_p["dirs"].add(".")
@@ -200,7 +200,6 @@ def handle_command(fields, capture_variables, env_variables):
 
         if capture_variables:
             cmd_str = cmd_str + "; echo '#@CHITIN_SECRET@#'; set"
-            print cmd_str
 
         proc = subprocess.Popen(
                 cmd_str,
@@ -228,6 +227,7 @@ def handle_command(fields, capture_variables, env_variables):
         print(stdout)
         print(stderr)
         print(cmd_uuid)
+        print cmd_str
 
         if proc.returncode > 0:
             # Should probably still check tokens and such...
@@ -249,6 +249,7 @@ def handle_command(fields, capture_variables, env_variables):
         if cmd.can_parse(fields[0]):
             parsed_meta = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
             meta.update(parsed_meta)
+        meta.update(input_meta)
         meta["run"] = run_meta
 
         # Look for changes
@@ -295,6 +296,8 @@ def parse_script(path, *tokens):
     current_block_variables = []
     block_variables = []
     in_block = False
+    input_map = {}
+    input_meta = {}
 
     for line in script_lines:
         if line.startswith("#@CHITIN_START_BLOCK"):
@@ -317,6 +320,14 @@ def parse_script(path, *tokens):
             v_fields = line.split(" ")
             current_block_variables.append(v_fields[1])
 
+        elif line.startswith("#@CHITIN_INPUT"):
+            v_fields = line.split(" ")
+            input_map[int(v_fields[1])] = v_fields[2]
+
+        elif line.startswith("#@CHITIN_META"):
+            v_fields = line.split(" ")
+            input_meta[v_fields[1]] = v_fields[2]
+
         else:
             if in_block:
                 current_block.append(line)
@@ -324,13 +335,17 @@ def parse_script(path, *tokens):
                 blocks.append([line])
                 block_variables.append([])
 
+    meta = {"script": {"path": path}}
     fixed_blocks = []
     for b in blocks:
         BLOCK_COMMAND = "; ".join(b)
         for i, value in enumerate(tokens):
             BLOCK_COMMAND = BLOCK_COMMAND.replace("$" + str(i+1), str(value))
+            meta["script"][input_map[i+1]] = value
         fixed_blocks.append(BLOCK_COMMAND)
-    return fixed_blocks, block_variables
+
+    meta["script"].update(input_meta)
+    return fixed_blocks, block_variables, meta
 
     
 def shell():
@@ -377,13 +392,14 @@ def shell():
             command_sets = [" ".join(fields)]
 
             # Special command handling
+            input_meta = {}
             VARIABLES = {}
             SKIP_RESET = False
             if cmd_str[0] == '@' or cmd_str[0] == '%':
                 special_cmd = fields[0][1:]
                 if special_cmd == "script":
                     SKIP_RESET = True
-                    command_sets, VARIABLES = parse_script(fields[1], *fields[2:])
+                    command_sets, VARIABLES, input_meta = parse_script(fields[1], *fields[2:])
                 elif special_cmd in special_commands:
                     try:
                         special_commands[special_cmd](*fields[1:])
@@ -404,7 +420,7 @@ def shell():
                     to_capture = VARIABLES[command_i]
                 except:
                     pass
-                handled = handle_command(command.split(" "), to_capture, captured)
+                handled = handle_command(command.split(" "), to_capture, captured, input_meta)
 
                 if handled:
                     if "message" in handled:

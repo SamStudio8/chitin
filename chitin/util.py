@@ -179,7 +179,7 @@ def parse_tokens(fields, env_vars):
 
         had_semicolon = False
         if field[-1] == ";":
-            has_semicolon = True
+            had_semicolon = True
             field = field.replace(";", "")
         abspath = os.path.abspath(field)
 
