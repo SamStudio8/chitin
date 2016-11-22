@@ -128,18 +128,18 @@ class BamFileHandler(FiletypeHandler):
             pass
 
         has_index = False
-        has_ood_index = None
+        has_indate_index = None
         if os.path.exists(self.path + ".bai"):
             has_index = True
-            if os.path.getmtime(self.path) > os.path.getmtime(self.path + ".bai"):
-                has_ood_index = True
+            if os.path.getmtime(self.path) <= os.path.getmtime(self.path + ".bai"):
+                has_indate_index = True
             else:
-                has_ood_index = False
+                has_indate_index = False
 
         return {
             ("has_reads", "has 0 reads"): reads > 0,
             ("has_index", "has no BAI"): has_index,
-            ("has_ood_index", "has a BAI older than itself"): has_ood_index,
+            ("has_indate_index", "has a BAI older than itself"): has_indate_index,
         }
 
     def make_metadata(self):
