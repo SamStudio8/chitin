@@ -191,6 +191,7 @@ class Chitin(object):
         self.uncaptured_variable_blocks = None
         self.variables = {}
         self.meta = {}
+        self.skip_integrity = False
 
     def attempt_special(self, cmd_str):
         # Special command handling
@@ -247,8 +248,11 @@ class Chitin(object):
             captured = {}
 
             # Check whether files have been altered outside of environment before proceeding
-            for failed in util.check_integrity_set(watched_dirs | watched_files, file_tokens=token_p["files"]):
-                print("[WARN] '%s' has been modified outside of lab book." % failed)
+            if not self.skip_integrity:
+                for failed in util.check_integrity_set(watched_dirs | watched_files, file_tokens=token_p["files"]):
+                    print("[WARN] '%s' has been modified outside of lab book." % failed)
+            else:
+                print("[WARN] You are brave... PRE-COMMAND INTEGRITY CHECKS ARE DISABLED")
 
             # Check whether any named files have results (usages) attached to files that
             # haven't been signed off...?
