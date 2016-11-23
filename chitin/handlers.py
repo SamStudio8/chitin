@@ -18,6 +18,9 @@ class CommandHandler(object):
     def handle_command(self):
         return {}
 
+    def get_version(self):
+        return {}
+
 
 class FiletypeHandler(object):
 
