@@ -35,7 +35,8 @@ def write_status(path, status, cmd_str, meta=None, usage=False, uuid=None):
 def get_status(path, cmd_str=""):
     abspath = os.path.abspath(path)
 
-    status = None
+    h = 0
+    status = '?'
     last_h = 0
     path_record = get_file_record(abspath)
     if os.path.exists(abspath):
@@ -59,7 +60,6 @@ def get_status(path, cmd_str=""):
             # Path exists but it is a surprise
             status = "C"
     elif path_record:
-        h = 0
         last_h = path_record.get_last_digest()
         status = "D"
 

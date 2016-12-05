@@ -212,8 +212,8 @@ class Chitin(object):
                     print("Likely incorrect usage of '%s'" % special_cmd)
         return SKIP, command_set
 
-    def super_handle(self, command_set):
-        handled = None
+    def super_handle(self, command_set, dry=False):
+        s_handled = {}
         for command_i, command in enumerate(command_set):
             to_capture = []
             try:
@@ -221,17 +221,21 @@ class Chitin(object):
             except:
                 pass
 
-            handled = self.handle_command(command.split(" "), to_capture, self.variables, self.meta)
+            handled = self.handle_command(command.split(" "), to_capture, self.variables, self.meta, dry)
             if handled:
                 if "captured" in handled:
                     self.variables.update(handled["captured"])
+                if "cmd_str" in handled:
+                    if "cmd_str" not in s_handled:
+                        s_handled["cmd_str"] = []
+                    s_handled["cmd_str"].append(handled["cmd_str"])
             print("")
             #####################################
         #TODO return aggregate message for scripts instead of last message
-        return handled
+        return s_handled
 
 
-    def handle_command(self, fields, capture_variables, env_variables, input_meta):
+    def handle_command(self, fields, capture_variables, env_variables, input_meta, dry=False):
             cmd_uuid = uuid.uuid4()
 
             # Determine files and folders on which to watch for changes
@@ -262,6 +266,13 @@ class Chitin(object):
             #####################################
             if capture_variables:
                 cmd_str = cmd_str + "; echo '#@CHITIN_SECRET@#'; set"
+
+            if dry:
+                return {
+                    "message": "There was no effect.",
+                    "captured": captured,
+                    "cmd_str": cmd_str
+                }
 
             start_clock = datetime.now()
             proc = subprocess.Popen(
