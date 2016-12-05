@@ -5,6 +5,7 @@ import sys
 import uuid
 
 from datetime import datetime
+from multiprocessing import Process, Queue
 
 from prompt_toolkit import prompt, AbortAction
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
@@ -184,6 +185,53 @@ special_commands = {
     "script": None,
 }
 
+class ChitinDaemon(object):
+
+    def __init__(self, c):
+        self.c = c
+        self.processes = {}
+
+    def run(self, cmd_q, output_q):
+        while True:
+            if cmd_q.empty():
+                if output_q.empty():
+                    continue
+
+                block = output_q.get()
+                cmd_uuid = block["uuid"]
+                self.c.handle_post_command(block)
+                self.processes[cmd_uuid].terminate()
+            else:
+                block = cmd_q.get()
+                cmd_uuid = block["uuid"]
+                self.processes[cmd_uuid] = Process(target=self.run_command,
+                        args=(block, output_q))
+                self.processes[cmd_uuid].start()
+
+
+    def run_command(self, block, output_q):
+        #print(block["uuid"])
+        #print(block["cmd"])
+        start_clock = datetime.now()
+        proc = subprocess.Popen(
+                block["cmd"],
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=dict(os.environ).update(block["env_vars"]),
+        )
+        stdout, stderr = proc.communicate()
+        end_clock = datetime.now()
+
+        output_q.put({
+            "uuid": block["uuid"],
+            "stdout": stdout,
+            "stderr": stderr,
+            "start_clock": start_clock,
+            "end_clock": end_clock,
+            "cmd_block": block,
+            "return_code": proc.returncode,
+        })
 
 class Chitin(object):
 
@@ -192,6 +240,29 @@ class Chitin(object):
         self.variables = {}
         self.meta = {}
         self.skip_integrity = False
+
+        self.cmd_q = Queue()
+        self.out_q = Queue()
+
+        d = ChitinDaemon(self)
+        self.d = d
+        self.daemon = Process(target=d.run,
+            args=(self.cmd_q, self.out_q))
+        self.daemon.start()
+
+        self.suppress = False
+
+    def queue_command(self, cmd_uuid, cmd_str, to_capture, env_vars, watch_dirs, watch_files, input_meta, suppress):
+        self.cmd_q.put({
+            "uuid": cmd_uuid,
+            "cmd": cmd_str,
+            "env_vars": env_vars,
+            "vars_to_capture": to_capture,
+            "wd": watch_dirs,
+            "wf": watch_files,
+            "input_meta": input_meta,
+            "suppress": suppress
+        })
 
     def attempt_special(self, cmd_str):
         # Special command handling
@@ -203,6 +274,11 @@ class Chitin(object):
             special_cmd = fields[0][1:]
             if special_cmd == "script":
                 command_set = self.parse_script(fields[1], *fields[2:])
+            elif special_cmd == "bg":
+                if self.suppress:
+                    self.suppress = False
+                else:
+                    self.suppress = True
             elif special_cmd in special_commands:
                 try:
                     special_commands[special_cmd](*fields[1:])
@@ -234,9 +310,97 @@ class Chitin(object):
         #TODO return aggregate message for scripts instead of last message
         return s_handled
 
+    def handle_post_command(self, block):
+        # disgusting
+        stdout = block["stdout"]
+        stderr = block["stderr"]
+        vars_to_cap = block["cmd_block"]["vars_to_capture"]
+        end_clock = block["end_clock"]
+        start_clock = block["start_clock"]
+        env_vars = block["cmd_block"]["env_vars"]
+        return_code = block["return_code"]
+        cmd_str = block["cmd_block"]["cmd"]
+        cmd_uuid = block["cmd_block"]["uuid"]
+        input_meta = block["cmd_block"]["input_meta"]
+
+        watched_dirs = block["cmd_block"]["wd"]
+        watched_files = block["cmd_block"]["wf"]
+
+        suppress = block["cmd_block"]["suppress"]
+
+        captured = {}
+        if vars_to_cap:
+            stdout_shards = re.split(r'(?!\')(#@CHITIN_SECRET@#)(?!\')', stdout)
+            stdout = stdout_shards[0]
+            try:
+                for l in "".join(stdout_shards[2]).split("\n"):
+                    try:
+                        l_f = l.split("=")
+                        if l_f[0] in vars_to_cap:
+                            captured[l_f[0]] = l_f[1]
+                    except:
+                        continue
+            except:
+                pass
+
+        if not suppress:
+            print(stdout)
+            print(stderr)
+
+        if return_code > 0:
+            # Should probably still check tokens and such...
+            return
+
+        run_meta = {"wall": str(end_clock - start_clock)}
+        #####################################
+
+        # Update field tokens
+        fields = cmd_str.split(" ")
+        token_p = util.parse_tokens(fields, env_vars)
+        new_dirs = token_p["dirs"] - watched_dirs
+        new_files = token_p["files"] - watched_files
+        cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
+
+        # Parse the output
+        #TODO New files won't yet have a file record so we can't use get_file_record in cmd.py
+        meta = {}
+        if cmd.can_parse(fields[0]):
+            parsed_meta = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
+            meta.update(parsed_meta)
+        meta.update(input_meta)
+        meta["run"] = run_meta
+
+        # Look for changes
+        status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
+        print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
+        print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
+
+
+        if status["codes"]["U"] != sum(status["codes"].values()):
+            for path, status_code in status["dirs"].items() + status["files"].items():
+                usage = False
+                if status_code == "U":
+                    usage = True
+                    if path not in fields:
+                        continue
+                util.write_status(path, status_code, cmd_str, usage=usage, meta=meta, uuid=cmd_uuid)
+
+        #TODO Commented out for now as %needed can now follow cp and mv
+        #for dup in status["dups"]:
+        #    util.add_file_record(dup, None, None, parent=status["dups"][dup])
+
+        message = "%s (%s): %d files changed, %d created, %d deleted." % (
+                cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
+        )
+
+        return {
+            "message": message,
+            "captured": captured
+        }
+
 
     def handle_command(self, fields, capture_variables, env_variables, input_meta, dry=False):
-            cmd_uuid = uuid.uuid4()
+            cmd_uuid = str(uuid.uuid4())
 
             # Determine files and folders on which to watch for changes
             token_p = util.parse_tokens(fields, env_variables)
@@ -246,10 +410,6 @@ class Chitin(object):
 
             # Collapse new command tokens to cmd_str and print cmd with uuid to user (before warnings)
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
-            print(cmd_uuid)
-            print(cmd_str)
-
-            captured = {}
 
             # Check whether files have been altered outside of environment before proceeding
             if not self.skip_integrity:
@@ -270,88 +430,11 @@ class Chitin(object):
             if dry:
                 return {
                     "message": "There was no effect.",
-                    "captured": captured,
+                    "captured": None,
                     "cmd_str": cmd_str
                 }
 
-            start_clock = datetime.now()
-            proc = subprocess.Popen(
-                    cmd_str,
-                    shell=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    env=dict(os.environ).update(env_variables),
-            )
-            stdout, stderr = proc.communicate()
-            end_clock = datetime.now()
-
-            if capture_variables:
-                stdout_shards = re.split(r'(?!\')(#@CHITIN_SECRET@#)(?!\')', stdout)
-                stdout = stdout_shards[0]
-                try:
-                    for l in "".join(stdout_shards[2]).split("\n"):
-                        try:
-                            l_f = l.split("=")
-                            if l_f[0] in capture_variables:
-                                captured[l_f[0]] = l_f[1]
-                        except:
-                            continue
-                except:
-                    pass
-
-            print(stdout)
-            print(stderr)
-
-            if proc.returncode > 0:
-                # Should probably still check tokens and such...
-                return
-
-            run_meta = {"wall": str(end_clock - start_clock)}
-            #####################################
-
-            # Update field tokens
-            fields = cmd_str.split(" ")
-            token_p = util.parse_tokens(fields, env_variables)
-            new_dirs = token_p["dirs"] - watched_dirs
-            new_files = token_p["files"] - watched_files
-            cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
-
-            # Parse the output
-            #TODO New files won't yet have a file record so we can't use get_file_record in cmd.py
-            meta = {}
-            if cmd.can_parse(fields[0]):
-                parsed_meta = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
-                meta.update(parsed_meta)
-            meta.update(input_meta)
-            meta["run"] = run_meta
-
-            # Look for changes
-            status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
-            print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
-            print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
-
-
-            if status["codes"]["U"] != sum(status["codes"].values()):
-                for path, status_code in status["dirs"].items() + status["files"].items():
-                    usage = False
-                    if status_code == "U":
-                        usage = True
-                        if path not in fields:
-                            continue
-                    util.write_status(path, status_code, cmd_str, usage=usage, meta=meta, uuid=cmd_uuid)
-
-            #TODO Commented out for now as %needed can now follow cp and mv
-            #for dup in status["dups"]:
-            #    util.add_file_record(dup, None, None, parent=status["dups"][dup])
-
-            message = "%s (%s): %d files changed, %d created, %d deleted." % (
-                    cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
-            )
-
-            return {
-                "message": message,
-                "captured": captured
-            }
+            self.queue_command(cmd_uuid, cmd_str, capture_variables, env_variables, watched_dirs, watched_files, input_meta, self.suppress)
 
 
     def parse_script(self, path, *tokens):
@@ -446,7 +529,12 @@ def shell():
         while True:
             cmd_str = ""
             while len(cmd_str.strip()) == 0:
-                cmd_str = prompt(u'===> ',
+                if c.suppress:
+                    current_prompt = u"~~~>"
+                else:
+                    current_prompt = u"===>"
+
+                cmd_str = prompt(current_prompt,
                         history=cmd_history,
                         auto_suggest=AutoSuggestFromHistory(),
                         completer=completer,
