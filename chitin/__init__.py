@@ -38,6 +38,8 @@ Currently interactive and multi-line commands don't work, sorry about that.
 %hashdir <path> <md5>   List hashes of directory contents for a given dir hash
 %script <path> [...]    Execute a bash script (very beta and awesomely grim)
 
+%q                      Switch suppression of stderr and stdout
+%i                      Switch performing full pre-command integrity checks
 """
 
 def history(file_path):
@@ -295,6 +297,12 @@ class Chitin(object):
                 else:
                     self.suppress = True
                 SKIP = True
+            elif special_cmd == "i":
+                if self.skip_integrity:
+                    self.skip_integrity = False
+                else:
+                    self.skip_integrity = True
+                SKIP = True
             elif special_cmd in special_commands:
                 try:
                     special_commands[special_cmd](*fields[1:])
@@ -538,6 +546,11 @@ def shell():
                     current_prompt = u"~~~>"
                 else:
                     current_prompt = u"===>"
+
+                if c.skip_integrity:
+                    current_prompt = u'!' + current_prompt
+                else:
+                    current_prompt = u'' + current_prompt
 
                 cmd_str = prompt(current_prompt,
                         history=cmd_history,
