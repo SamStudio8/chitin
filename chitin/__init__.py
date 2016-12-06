@@ -212,6 +212,17 @@ class ChitinDaemon(object):
     def run_command(self, block, output_q):
         #print(block["uuid"])
         #print(block["cmd"])
+        # Check whether files have been altered outside of environment before proceeding
+        if not block["skip_integrity"]:
+            for failed in util.check_integrity_set(block["wd"] | block["wf"], file_tokens=block["tokens"]["files"]):
+                print("[WARN] '%s' has been modified outside of lab book." % failed)
+        else:
+            print("[WARN] You are brave... PRE-COMMAND INTEGRITY CHECKS ARE DISABLED")
+
+        # Check whether any named files have results (usages) attached to files that
+        # haven't been signed off...?
+        pass
+
         start_clock = datetime.now()
         proc = subprocess.Popen(
                 block["cmd"],
@@ -252,7 +263,7 @@ class Chitin(object):
 
         self.suppress = False
 
-    def queue_command(self, cmd_uuid, cmd_str, to_capture, env_vars, watch_dirs, watch_files, input_meta, suppress):
+    def queue_command(self, cmd_uuid, cmd_str, to_capture, env_vars, watch_dirs, watch_files, input_meta, suppress, skip_integrity, tokens):
         self.cmd_q.put({
             "uuid": cmd_uuid,
             "cmd": cmd_str,
@@ -261,7 +272,9 @@ class Chitin(object):
             "wd": watch_dirs,
             "wf": watch_files,
             "input_meta": input_meta,
-            "suppress": suppress
+            "suppress": suppress,
+            "tokens": tokens,
+            "skip_integrity": skip_integrity
         })
 
     def attempt_special(self, cmd_str):
@@ -274,7 +287,7 @@ class Chitin(object):
             special_cmd = fields[0][1:]
             if special_cmd == "script":
                 command_set = self.parse_script(fields[1], *fields[2:])
-            elif special_cmd == "bg":
+            elif special_cmd == "q":
                 if self.suppress:
                     self.suppress = False
                 else:
@@ -411,19 +424,6 @@ class Chitin(object):
             # Collapse new command tokens to cmd_str and print cmd with uuid to user (before warnings)
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
-            # Check whether files have been altered outside of environment before proceeding
-            if not self.skip_integrity:
-                for failed in util.check_integrity_set(watched_dirs | watched_files, file_tokens=token_p["files"]):
-                    print("[WARN] '%s' has been modified outside of lab book." % failed)
-            else:
-                print("[WARN] You are brave... PRE-COMMAND INTEGRITY CHECKS ARE DISABLED")
-
-            # Check whether any named files have results (usages) attached to files that
-            # haven't been signed off...?
-            pass
-
-            # EXECUTE
-            #####################################
             if capture_variables:
                 cmd_str = cmd_str + "; echo '#@CHITIN_SECRET@#'; set"
 
@@ -434,7 +434,8 @@ class Chitin(object):
                     "cmd_str": cmd_str
                 }
 
-            self.queue_command(cmd_uuid, cmd_str, capture_variables, env_variables, watched_dirs, watched_files, input_meta, self.suppress)
+            ### Queue for Execution
+            self.queue_command(cmd_uuid, cmd_str, capture_variables, env_variables, watched_dirs, watched_files, input_meta, self.suppress, self.skip_integrity, token_p)
 
 
     def parse_script(self, path, *tokens):
@@ -523,6 +524,7 @@ def shell():
     del completer.completers["executable"]
 
     # Check whether files in and around the current directory have been changed...
+    print("Performing opening integrity check...")
     for failed in util.check_integrity_set(set(".")):
         print("[WARN] '%s' has been modified outside of lab book." % failed)
     try:
