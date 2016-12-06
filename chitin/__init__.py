@@ -210,8 +210,7 @@ class ChitinDaemon(object):
 
 
     def run_command(self, block, output_q):
-        #print(block["uuid"])
-        #print(block["cmd"])
+        print("INTG", block["uuid"])
         # Check whether files have been altered outside of environment before proceeding
         if not block["skip_integrity"]:
             for failed in util.check_integrity_set(block["wd"] | block["wf"], file_tokens=block["tokens"]["files"]):
@@ -223,6 +222,8 @@ class ChitinDaemon(object):
         # haven't been signed off...?
         pass
 
+        print("EXEC", block["uuid"])
+        print(block["cmd"])
         start_clock = datetime.now()
         proc = subprocess.Popen(
                 block["cmd"],
@@ -264,6 +265,7 @@ class Chitin(object):
         self.suppress = False
 
     def queue_command(self, cmd_uuid, cmd_str, to_capture, env_vars, watch_dirs, watch_files, input_meta, suppress, skip_integrity, tokens):
+        print("Queued.")
         self.cmd_q.put({
             "uuid": cmd_uuid,
             "cmd": cmd_str,
@@ -292,6 +294,7 @@ class Chitin(object):
                     self.suppress = False
                 else:
                     self.suppress = True
+                SKIP = True
             elif special_cmd in special_commands:
                 try:
                     special_commands[special_cmd](*fields[1:])
