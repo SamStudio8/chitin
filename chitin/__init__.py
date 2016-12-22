@@ -189,26 +189,43 @@ special_commands = {
 
 class ChitinDaemon(object):
 
-    def __init__(self, c):
-        self.c = c
+    def __init__(self, MAX_PROC=32):
+        self.MAX_PROC = MAX_PROC
         self.processes = {}
 
     def run(self, cmd_q, output_q):
+        try_outs = False
+        WAIT_TO_DONE = False
         while True:
-            if cmd_q.empty():
+            if cmd_q.empty() or try_outs == True or WAIT_TO_DONE == True:
+                try_outs = False
                 if output_q.empty():
+                    if WAIT_TO_DONE == True and len(self.processes) == 0:
+                        return
                     continue
 
                 block = output_q.get()
                 cmd_uuid = block["uuid"]
-                self.c.handle_post_command(block)
                 self.processes[cmd_uuid].terminate()
+                Chitin.handle_post_command(block)
+                del self.processes[cmd_uuid]
+
             else:
-                block = cmd_q.get()
-                cmd_uuid = block["uuid"]
-                self.processes[cmd_uuid] = Process(target=self.run_command,
-                        args=(block, output_q))
-                self.processes[cmd_uuid].start()
+                if len(self.processes) < self.MAX_PROC:
+                    block = cmd_q.get()
+
+                    if not block:
+                        WAIT_TO_DONE = True
+                        continue
+
+                    cmd_uuid = block["uuid"]
+                    self.processes[cmd_uuid] = Process(target=self.run_command,
+                            args=(block, output_q))
+                    self.processes[cmd_uuid].start()
+                else:
+                    print("Not enough processes currently. Will wait a little while.")
+                    try_outs = True
+
 
 
     def run_command(self, block, output_q):
@@ -253,20 +270,24 @@ class Chitin(object):
         self.uncaptured_variable_blocks = None
         self.variables = {}
         self.meta = {}
+
         self.skip_integrity = False
+        self.suppress = False
+        self.ignore_dot = False
+        self.ignore_parents = False
 
         self.cmd_q = Queue()
         self.out_q = Queue()
 
-        d = ChitinDaemon(self)
+        d = ChitinDaemon(MAX_PROC=32)
         self.d = d
-        self.daemon = Process(target=d.run,
+        daemon = Process(target=d.run, #TODO This seems to actually copy Chitin to the worker
             args=(self.cmd_q, self.out_q))
-        self.daemon.start()
+        daemon.start()
 
-        self.suppress = False
 
-    def queue_command(self, cmd_uuid, cmd_str, to_capture, env_vars, watch_dirs, watch_files, input_meta, suppress, skip_integrity, tokens):
+
+    def queue_command(self, cmd_uuid, cmd_str, to_capture, env_vars, watch_dirs, watch_files, input_meta, suppress, skip_integrity, tokens, ignore_parents):
         print("Queued.")
         self.cmd_q.put({
             "uuid": cmd_uuid,
@@ -278,7 +299,8 @@ class Chitin(object):
             "input_meta": input_meta,
             "suppress": suppress,
             "tokens": tokens,
-            "skip_integrity": skip_integrity
+            "skip_integrity": skip_integrity,
+            "ignore_parents": ignore_parents,
         })
 
     def attempt_special(self, cmd_str):
@@ -322,19 +344,31 @@ class Chitin(object):
                 pass
 
             handled = self.handle_command(command.split(" "), to_capture, self.variables, self.meta, dry)
+
+            """
             if handled:
                 if "captured" in handled:
                     self.variables.update(handled["captured"])
+                    if "captured" not in s_handled:
+                        s_handled["captured"] = {}
+                    s_handled["captured"].update(handled["captured"])
                 if "cmd_str" in handled:
                     if "cmd_str" not in s_handled:
                         s_handled["cmd_str"] = []
                     s_handled["cmd_str"].append(handled["cmd_str"])
+            """
             print("")
             #####################################
+
         #TODO return aggregate message for scripts instead of last message
         return s_handled
 
-    def handle_post_command(self, block):
+    def end_q(self):
+        self.cmd_q.put(None)
+
+
+    @staticmethod
+    def handle_post_command(block):
         # disgusting
         stdout = block["stdout"]
         stderr = block["stderr"]
@@ -380,7 +414,7 @@ class Chitin(object):
 
         # Update field tokens
         fields = cmd_str.split(" ")
-        token_p = util.parse_tokens(fields, env_vars)
+        token_p = util.parse_tokens(fields, env_vars, ignore_parents=block["cmd_block"]["ignore_parents"])
         new_dirs = token_p["dirs"] - watched_dirs
         new_files = token_p["files"] - watched_files
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
@@ -427,8 +461,9 @@ class Chitin(object):
             cmd_uuid = str(uuid.uuid4())
 
             # Determine files and folders on which to watch for changes
-            token_p = util.parse_tokens(fields, env_variables)
-            token_p["dirs"].add(".")
+            token_p = util.parse_tokens(fields, env_variables, ignore_parents=self.ignore_parents)
+            if not self.ignore_dot:
+                token_p["dirs"].add(".")
             watched_dirs = token_p["dirs"]
             watched_files = token_p["files"]
 
@@ -446,7 +481,7 @@ class Chitin(object):
                 }
 
             ### Queue for Execution
-            self.queue_command(cmd_uuid, cmd_str, capture_variables, env_variables, watched_dirs, watched_files, input_meta, self.suppress, self.skip_integrity, token_p)
+            self.queue_command(cmd_uuid, cmd_str, capture_variables, env_variables, watched_dirs, watched_files, input_meta, self.suppress, self.skip_integrity, token_p, self.ignore_parents)
 
 
     def parse_script(self, path, *tokens):

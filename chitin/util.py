@@ -168,7 +168,7 @@ def check_integrity(path, is_token=False):
 
     return broken_integrity
 
-def parse_tokens(fields, env_vars):
+def parse_tokens(fields, env_vars, ignore_parents=False):
     dirs_l = []
     file_l = []
     for field_i, field in enumerate(fields):
@@ -183,21 +183,29 @@ def parse_tokens(fields, env_vars):
             field = field.replace(";", "")
         abspath = os.path.abspath(field)
 
+        # Does the path exist? We might want to add its parent directory
         if os.path.exists(abspath):
             if had_semicolon:
                 fields[field_i] = abspath + ';' # Update the command to use the full abspath
             else:
                 fields[field_i] = abspath # Update the command to use the full abspath
-            dirs_l.append(os.path.dirname(abspath))
+
+            if not ignore_parents:
+                dirs_l.append(os.path.dirname(abspath))
         else:
             potential_dir = os.path.dirname(abspath)
-            if os.path.exists(potential_dir):
+            if os.path.exists(potential_dir) and not ignore_parents:
                 dirs_l.append(potential_dir)
             continue
 
+        ### Files
         if os.path.isfile(abspath):
             file_l.append(abspath)
-            dirs_l.append(os.path.dirname(abspath))
+
+            if not ignore_parents:
+                dirs_l.append(os.path.dirname(abspath))
+
+        ### Dirs
         elif os.path.isdir(abspath):
             dirs_l.append(abspath)
 
