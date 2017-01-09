@@ -193,7 +193,87 @@ class ChitinDaemon(object):
         self.MAX_PROC = MAX_PROC
         self.processes = {}
 
-    def run(self, cmd_q, output_q):
+    def handle_post(self, block, output_q):
+        print("POST", block["uuid"])
+        # disgusting
+        stdout = block["stdout"]
+        stderr = block["stderr"]
+
+        end_clock = block["end_clock"]
+        start_clock = block["start_clock"]
+        env_vars = block["cmd_block"]["env_vars"]
+        return_code = block["return_code"]
+        cmd_str = block["cmd_block"]["cmd"]
+        cmd_uuid = block["cmd_block"]["uuid"]
+        input_meta = block["cmd_block"]["input_meta"]
+
+        watched_dirs = block["cmd_block"]["wd"]
+        watched_files = block["cmd_block"]["wf"]
+
+        suppress = block["cmd_block"]["suppress"]
+
+        if not suppress:
+            print(stdout)
+            print(stderr)
+
+        if return_code > 0:
+            # Should probably still check tokens and such...
+            print("[WARN] Command %s exited with non-zero code." % cmd_str)
+            return
+
+        run_meta = {"wall": str(end_clock - start_clock)}
+        #####################################
+
+        # Update field tokens
+        fields = cmd_str.split(" ")
+        token_p = util.parse_tokens(fields, env_vars, ignore_parents=block["cmd_block"]["ignore_parents"])
+        new_dirs = token_p["dirs"] - watched_dirs
+        new_files = token_p["files"] - watched_files
+        cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
+
+        # Parse the output
+        #TODO New files won't yet have a file record so we can't use get_file_record in cmd.py
+        meta = {}
+        if cmd.can_parse(fields[0]):
+            parsed_meta = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
+            meta.update(parsed_meta)
+        meta.update(input_meta)
+        meta["run"] = run_meta
+
+        # Look for changes
+        status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
+        print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
+        print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
+
+
+        if status["codes"]["U"] != sum(status["codes"].values()):
+            for path, status_code in status["dirs"].items() + status["files"].items():
+                usage = False
+                if status_code == "U":
+                    usage = True
+                    if path not in fields:
+                        continue
+                util.write_status(path, status_code, cmd_str, usage=usage, meta=meta, uuid=cmd_uuid)
+
+        #TODO Commented out for now as %needed can now follow cp and mv
+        #for dup in status["dups"]:
+        #    util.add_file_record(dup, None, None, parent=status["dups"][dup])
+
+        message = "%s (%s): %d files changed, %d created, %d deleted." % (
+                cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
+        )
+
+        output_q.put({
+            "uuid": block["uuid"],
+            "post": True,
+        })
+
+        #return {
+        #    "message": message,
+        #}
+
+
+    def orchestrate(self, cmd_q, output_q):
         try_outs = False
         WAIT_TO_DONE = False
         while True:
@@ -206,9 +286,15 @@ class ChitinDaemon(object):
 
                 block = output_q.get()
                 cmd_uuid = block["uuid"]
-                self.processes[cmd_uuid].terminate()
-                Chitin.handle_post_command(block)
-                del self.processes[cmd_uuid]
+
+                if "post" in block:
+                    self.processes[cmd_uuid].terminate()
+                    del self.processes[cmd_uuid]
+                else:
+                    self.processes[cmd_uuid].terminate()
+                    self.processes[cmd_uuid] = Process(target=self.handle_post,
+                            args=(block, output_q))
+                    self.processes[cmd_uuid].start()
 
             else:
                 if len(self.processes) < self.MAX_PROC:
@@ -280,7 +366,7 @@ class Chitin(object):
 
         d = ChitinDaemon(MAX_PROC=32)
         self.d = d
-        daemon = Process(target=d.run, #TODO This seems to actually copy Chitin to the worker
+        daemon = Process(target=d.orchestrate, #TODO This seems to actually copy Chitin to the worker
             args=(self.cmd_q, self.out_q))
         daemon.start()
 
@@ -352,80 +438,6 @@ class Chitin(object):
 
     def end_q(self):
         self.cmd_q.put(None)
-
-
-    @staticmethod
-    def handle_post_command(block):
-        # disgusting
-        stdout = block["stdout"]
-        stderr = block["stderr"]
-
-        end_clock = block["end_clock"]
-        start_clock = block["start_clock"]
-        env_vars = block["cmd_block"]["env_vars"]
-        return_code = block["return_code"]
-        cmd_str = block["cmd_block"]["cmd"]
-        cmd_uuid = block["cmd_block"]["uuid"]
-        input_meta = block["cmd_block"]["input_meta"]
-
-        watched_dirs = block["cmd_block"]["wd"]
-        watched_files = block["cmd_block"]["wf"]
-
-        suppress = block["cmd_block"]["suppress"]
-
-        if not suppress:
-            print(stdout)
-            print(stderr)
-
-        if return_code > 0:
-            # Should probably still check tokens and such...
-            return
-
-        run_meta = {"wall": str(end_clock - start_clock)}
-        #####################################
-
-        # Update field tokens
-        fields = cmd_str.split(" ")
-        token_p = util.parse_tokens(fields, env_vars, ignore_parents=block["cmd_block"]["ignore_parents"])
-        new_dirs = token_p["dirs"] - watched_dirs
-        new_files = token_p["files"] - watched_files
-        cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
-
-        # Parse the output
-        #TODO New files won't yet have a file record so we can't use get_file_record in cmd.py
-        meta = {}
-        if cmd.can_parse(fields[0]):
-            parsed_meta = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
-            meta.update(parsed_meta)
-        meta.update(input_meta)
-        meta["run"] = run_meta
-
-        # Look for changes
-        status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
-        print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
-        print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
-
-
-        if status["codes"]["U"] != sum(status["codes"].values()):
-            for path, status_code in status["dirs"].items() + status["files"].items():
-                usage = False
-                if status_code == "U":
-                    usage = True
-                    if path not in fields:
-                        continue
-                util.write_status(path, status_code, cmd_str, usage=usage, meta=meta, uuid=cmd_uuid)
-
-        #TODO Commented out for now as %needed can now follow cp and mv
-        #for dup in status["dups"]:
-        #    util.add_file_record(dup, None, None, parent=status["dups"][dup])
-
-        message = "%s (%s): %d files changed, %d created, %d deleted." % (
-                cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
-        )
-
-        return {
-            "message": message,
-        }
 
 
     def handle_command(self, fields, env_variables, input_meta, dry=False):
