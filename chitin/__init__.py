@@ -267,7 +267,6 @@ class ChitinDaemon(object):
 class Chitin(object):
 
     def __init__(self):
-        self.uncaptured_variable_blocks = None
         self.variables = {}
         self.meta = {}
 
@@ -287,20 +286,19 @@ class Chitin(object):
 
 
 
-    def queue_command(self, cmd_uuid, cmd_str, to_capture, env_vars, watch_dirs, watch_files, input_meta, suppress, skip_integrity, tokens, ignore_parents):
+    def queue_command(self, cmd_uuid, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, self_flags):
         print("Queued.")
         self.cmd_q.put({
             "uuid": cmd_uuid,
             "cmd": cmd_str,
             "env_vars": env_vars,
-            "vars_to_capture": to_capture,
             "wd": watch_dirs,
             "wf": watch_files,
             "input_meta": input_meta,
-            "suppress": suppress,
+            "suppress": self_flags["suppress"],
             "tokens": tokens,
-            "skip_integrity": skip_integrity,
-            "ignore_parents": ignore_parents,
+            "skip_integrity": self_flags["skip_integ"],
+            "ignore_parents": self_flags["ignore_parents"],
         })
 
     def attempt_special(self, cmd_str):
@@ -337,21 +335,10 @@ class Chitin(object):
     def super_handle(self, command_set, dry=False):
         s_handled = {}
         for command_i, command in enumerate(command_set):
-            to_capture = []
-            try:
-                to_capture = self.uncaptured_variable_blocks[command_i]
-            except:
-                pass
-
-            handled = self.handle_command(command.split(" "), to_capture, self.variables, self.meta, dry)
+            handled = self.handle_command(command.split(" "), self.variables, self.meta, dry)
 
             """
             if handled:
-                if "captured" in handled:
-                    self.variables.update(handled["captured"])
-                    if "captured" not in s_handled:
-                        s_handled["captured"] = {}
-                    s_handled["captured"].update(handled["captured"])
                 if "cmd_str" in handled:
                     if "cmd_str" not in s_handled:
                         s_handled["cmd_str"] = []
@@ -372,7 +359,7 @@ class Chitin(object):
         # disgusting
         stdout = block["stdout"]
         stderr = block["stderr"]
-        vars_to_cap = block["cmd_block"]["vars_to_capture"]
+
         end_clock = block["end_clock"]
         start_clock = block["start_clock"]
         env_vars = block["cmd_block"]["env_vars"]
@@ -385,21 +372,6 @@ class Chitin(object):
         watched_files = block["cmd_block"]["wf"]
 
         suppress = block["cmd_block"]["suppress"]
-
-        captured = {}
-        if vars_to_cap:
-            stdout_shards = re.split(r'(?!\')(#@CHITIN_SECRET@#)(?!\')', stdout)
-            stdout = stdout_shards[0]
-            try:
-                for l in "".join(stdout_shards[2]).split("\n"):
-                    try:
-                        l_f = l.split("=")
-                        if l_f[0] in vars_to_cap:
-                            captured[l_f[0]] = l_f[1]
-                    except:
-                        continue
-            except:
-                pass
 
         if not suppress:
             print(stdout)
@@ -453,35 +425,33 @@ class Chitin(object):
 
         return {
             "message": message,
-            "captured": captured
         }
 
 
-    def handle_command(self, fields, capture_variables, env_variables, input_meta, dry=False):
-            cmd_uuid = str(uuid.uuid4())
+    def handle_command(self, fields, env_variables, input_meta, dry=False):
+        cmd_uuid = str(uuid.uuid4())
 
-            # Determine files and folders on which to watch for changes
-            token_p = util.parse_tokens(fields, env_variables, ignore_parents=self.ignore_parents)
-            if not self.ignore_dot:
-                token_p["dirs"].add(".")
-            watched_dirs = token_p["dirs"]
-            watched_files = token_p["files"]
+        # Determine files and folders on which to watch for changes
+        token_p = util.parse_tokens(fields, env_variables, ignore_parents=self.ignore_parents)
+        if not self.ignore_dot:
+            token_p["dirs"].add(".")
+        watched_dirs = token_p["dirs"]
+        watched_files = token_p["files"]
 
-            # Collapse new command tokens to cmd_str and print cmd with uuid to user (before warnings)
-            cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
+        # Collapse new command tokens to cmd_str and print cmd with uuid to user (before warnings)
+        cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
-            if capture_variables:
-                cmd_str = cmd_str + "; echo '#@CHITIN_SECRET@#'; set"
+        if dry:
+            return {
+                "message": "There was no effect.",
+                "cmd_str": cmd_str
+            }
 
-            if dry:
-                return {
-                    "message": "There was no effect.",
-                    "captured": None,
-                    "cmd_str": cmd_str
-                }
-
-            ### Queue for Execution
-            self.queue_command(cmd_uuid, cmd_str, capture_variables, env_variables, watched_dirs, watched_files, input_meta, self.suppress, self.skip_integrity, token_p, self.ignore_parents)
+        ### Queue for Execution
+        self.queue_command(cmd_uuid, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p,
+                {"suppress": self.suppress,
+                 "skip_integ": self.skip_integrity,
+                 "ignore_parents": self.ignore_parents})
 
 
     def parse_script(self, path, *tokens):
@@ -496,8 +466,6 @@ class Chitin(object):
         # Split the blocks
         blocks = []
         current_block = []
-        current_block_variables = []
-        block_variables = []
         in_block = False
         input_map = {}
         input_meta = {}
@@ -506,22 +474,14 @@ class Chitin(object):
             if line.startswith("#@CHITIN_START_BLOCK"):
                 if len(current_block) > 0:
                     blocks.append(current_block)
-                    block_variables.append(current_block_variables)
                     current_block = []
-                    current_block_variables = []
                 else:
                     in_block = True
             elif line.startswith("#@CHITIN_END_BLOCK"):
                 if len(current_block) > 0:
                     blocks.append(current_block)
-                    block_variables.append(current_block_variables)
                     current_block = []
-                    current_block_variables = []
                 in_block = False
-
-            elif line.startswith("#@CHITIN_VARIABLE"):
-                v_fields = line.split(" ")
-                current_block_variables.append(v_fields[1])
 
             elif line.startswith("#@CHITIN_INPUT"):
                 v_fields = line.split(" ")
@@ -536,7 +496,6 @@ class Chitin(object):
                     current_block.append(line)
                 else:
                     blocks.append([line])
-                    block_variables.append([])
 
         meta = {"script": {"path": path}}
         fixed_blocks = []
@@ -549,7 +508,6 @@ class Chitin(object):
 
         meta["script"].update(input_meta)
 
-        self.uncaptured_variable_blocks = block_variables
         self.meta.update(meta)
         return fixed_blocks
 
