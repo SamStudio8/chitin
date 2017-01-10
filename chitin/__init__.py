@@ -379,32 +379,29 @@ class Chitin(object):
 
         command_set = []
         if cmd_str[0] == '@' or cmd_str[0] == '%':
+            SKIP = True
             special_cmd = fields[0][1:]
             if special_cmd == "script":
                 command_set = self.parse_script(fields[1], *fields[2:])
+                SKIP = False #there's always one
             elif special_cmd == "o":
                 self.print_stdout(int(fields[1]))
-                SKIP = True
             elif special_cmd == "j":
                 self.print_results(force=True)
                 print("")
-                SKIP = True
             elif special_cmd == "q":
                 if self.suppress:
                     self.suppress = False
                 else:
                     self.suppress = True
-                SKIP = True
             elif special_cmd == "i":
                 if self.skip_integrity:
                     self.skip_integrity = False
                 else:
                     self.skip_integrity = True
-                SKIP = True
             elif special_cmd in special_commands:
                 try:
                     special_commands[special_cmd](*fields[1:])
-                    SKIP = True
                 except TypeError as e:
                     print e
                     print("Likely incorrect usage of '%s'" % special_cmd)
