@@ -29,7 +29,17 @@ What does it do?
     * *e.g.* Has `foo` changed since it was last seen?
     * *e.g.* Are we about to clobber a file that has downstream importance?
     * *e.g.* Are any of our inputs malformed?
-    
+
+How do I start it?
+------------------
+To run the shell:
+
+    $ chitin
+
+To run the terrible web interface:
+
+    $ chitin-web
+
 How does it work?
 -----------------
 
