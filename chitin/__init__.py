@@ -348,7 +348,7 @@ class Chitin(object):
         self.out_q = Queue()
         self.result_q = Queue()
 
-        self.MAX_RESULTS = 32
+        self.MAX_RESULTS = 10
         self.curr_result_ptr = 0
         self.results = [None] * self.MAX_RESULTS
 
@@ -518,7 +518,6 @@ class Chitin(object):
         if block is not None:
             print("(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_block"]["cmd"][:61]))
             print(block["stdout"])
-
 
 def shell():
     c = Chitin()
