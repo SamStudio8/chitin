@@ -6,6 +6,7 @@ import uuid
 
 from datetime import datetime
 from multiprocessing import Process, Queue
+from time import sleep
 
 from prompt_toolkit import prompt, AbortAction
 from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
@@ -184,7 +185,6 @@ special_commands = {
     "how": how,
     "needed": needed,
     "hashdir": hashdir,
-    "script": None,
 }
 
 class ChitinDaemon(object):
@@ -194,7 +194,6 @@ class ChitinDaemon(object):
         self.processes = {}
 
     def handle_post(self, block, output_q):
-        print("POST", block["uuid"])
         # disgusting
         stdout = block["stdout"]
         stderr = block["stderr"]
@@ -209,12 +208,6 @@ class ChitinDaemon(object):
 
         watched_dirs = block["cmd_block"]["wd"]
         watched_files = block["cmd_block"]["wf"]
-
-        suppress = block["cmd_block"]["suppress"]
-
-        if not suppress:
-            print(stdout)
-            print(stderr)
 
         if return_code > 0:
             # Should probably still check tokens and such...
@@ -242,11 +235,9 @@ class ChitinDaemon(object):
 
         # Look for changes
         status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
-        print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
-        print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
-
-
         if status["codes"]["U"] != sum(status["codes"].values()):
+            print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
+            print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
             for path, status_code in status["dirs"].items() + status["files"].items():
                 usage = False
                 if status_code == "U":
@@ -255,28 +246,19 @@ class ChitinDaemon(object):
                         continue
                 util.write_status(path, status_code, cmd_str, usage=usage, meta=meta, uuid=cmd_uuid)
 
-        #TODO Commented out for now as %needed can now follow cp and mv
-        #for dup in status["dups"]:
-        #    util.add_file_record(dup, None, None, parent=status["dups"][dup])
+        #message = "%s (%s): %d files changed, %d created, %d deleted." % (
+        #        cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
+        #)
 
-        message = "%s (%s): %d files changed, %d created, %d deleted." % (
-                cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
-        )
-
-        output_q.put({
-            "uuid": block["uuid"],
-            "post": True,
-        })
-
-        #return {
-        #    "message": message,
-        #}
+        block.update({"post": True})
+        output_q.put(block)
 
 
-    def orchestrate(self, cmd_q, output_q):
+    def orchestrate(self, cmd_q, output_q, result_q):
         try_outs = False
         WAIT_TO_DONE = False
         while True:
+            sleep(1)
             if cmd_q.empty() or try_outs == True or WAIT_TO_DONE == True:
                 try_outs = False
                 if output_q.empty():
@@ -289,6 +271,7 @@ class ChitinDaemon(object):
 
                 if "post" in block:
                     self.processes[cmd_uuid].terminate()
+                    result_q.put(block)
                     del self.processes[cmd_uuid]
                 else:
                     self.processes[cmd_uuid].terminate()
@@ -315,7 +298,6 @@ class ChitinDaemon(object):
 
 
     def run_command(self, block, output_q):
-        print("INTG", block["uuid"])
         # Check whether files have been altered outside of environment before proceeding
         if not block["skip_integrity"]:
             for failed in util.check_integrity_set(block["wd"] | block["wf"], file_tokens=block["tokens"]["files"]):
@@ -327,8 +309,6 @@ class ChitinDaemon(object):
         # haven't been signed off...?
         pass
 
-        print("EXEC", block["uuid"])
-        print(block["cmd"])
         start_clock = datetime.now()
         proc = subprocess.Popen(
                 block["cmd"],
@@ -363,17 +343,20 @@ class Chitin(object):
 
         self.cmd_q = Queue()
         self.out_q = Queue()
+        self.result_q = Queue()
+
+        self.MAX_RESULTS = 32
+        self.curr_result_ptr = 0
+        self.results = [None] * self.MAX_RESULTS
 
         d = ChitinDaemon(MAX_PROC=32)
         self.d = d
         daemon = Process(target=d.orchestrate, #TODO This seems to actually copy Chitin to the worker
-            args=(self.cmd_q, self.out_q))
+            args=(self.cmd_q, self.out_q, self.result_q))
         daemon.start()
 
 
-
     def queue_command(self, cmd_uuid, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, self_flags):
-        print("Queued.")
         self.cmd_q.put({
             "uuid": cmd_uuid,
             "cmd": cmd_str,
@@ -381,7 +364,6 @@ class Chitin(object):
             "wd": watch_dirs,
             "wf": watch_files,
             "input_meta": input_meta,
-            "suppress": self_flags["suppress"],
             "tokens": tokens,
             "skip_integrity": self_flags["skip_integ"],
             "ignore_parents": self_flags["ignore_parents"],
@@ -419,26 +401,8 @@ class Chitin(object):
         return SKIP, command_set
 
     def super_handle(self, command_set, dry=False):
-        s_handled = {}
         for command_i, command in enumerate(command_set):
-            handled = self.handle_command(command.split(" "), self.variables, self.meta, dry)
-
-            """
-            if handled:
-                if "cmd_str" in handled:
-                    if "cmd_str" not in s_handled:
-                        s_handled["cmd_str"] = []
-                    s_handled["cmd_str"].append(handled["cmd_str"])
-            """
-            print("")
-            #####################################
-
-        #TODO return aggregate message for scripts instead of last message
-        return s_handled
-
-    def end_q(self):
-        self.cmd_q.put(None)
-
+            self.handle_command(command.split(" "), self.variables, self.meta, dry)
 
     def handle_command(self, fields, env_variables, input_meta, dry=False):
         cmd_uuid = str(uuid.uuid4())
@@ -460,10 +424,10 @@ class Chitin(object):
             }
 
         ### Queue for Execution
-        self.queue_command(cmd_uuid, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p,
-                {"suppress": self.suppress,
+        self.queue_command(cmd_uuid, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p, {
                  "skip_integ": self.skip_integrity,
-                 "ignore_parents": self.ignore_parents})
+                 "ignore_parents": self.ignore_parents,
+        })
 
 
     def parse_script(self, path, *tokens):
@@ -523,6 +487,23 @@ class Chitin(object):
         self.meta.update(meta)
         return fixed_blocks
 
+    def move_result_q(self):
+        while not self.result_q.empty():
+            block = self.result_q.get()
+            self.results[self.curr_result_ptr] = block
+            self.curr_result_ptr += 1
+
+            if self.curr_result_ptr == self.MAX_RESULTS:
+                self.curr_result_ptr = 0
+
+    def print_results(self):
+        self.move_result_q()
+        for pos in range(self.curr_result_ptr-1, -1, -1) + range(self.MAX_RESULTS-1,self.curr_result_ptr,-1):
+            block = self.results[pos]
+            if block is not None:
+                print "(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_block"]["cmd"][:61])
+
+
 def shell():
     c = Chitin()
 
@@ -557,6 +538,9 @@ def shell():
                 else:
                     current_prompt = u'' + current_prompt
 
+                c.print_results()
+                print("")
+
                 cmd_str = prompt(current_prompt,
                         history=cmd_history,
                         auto_suggest=AutoSuggestFromHistory(),
@@ -577,14 +561,7 @@ def shell():
             if len(special_command_set) > 0:
                 command_set = special_command_set
 
-            #####################################
-            handled = c.super_handle(command_set)
-            if handled:
-                if "message" in handled:
-                    message = handled["message"]
-                else:
-                    message = VERSION
-            #####################################
+            c.super_handle(command_set)
 
     except EOFError:
         print("Bye!")
