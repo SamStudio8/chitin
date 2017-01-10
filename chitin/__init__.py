@@ -41,6 +41,8 @@ Currently interactive and multi-line commands don't work, sorry about that.
 
 %q                      Switch suppression of stderr and stdout
 %i                      Switch performing full pre-command integrity checks
+
+%o <job>                Show stdout for given job number
 """
 
 def history(file_path):
@@ -379,6 +381,9 @@ class Chitin(object):
             special_cmd = fields[0][1:]
             if special_cmd == "script":
                 command_set = self.parse_script(fields[1], *fields[2:])
+            elif special_cmd == "o":
+                self.print_stdout(int(fields[1]))
+                SKIP = True
             elif special_cmd == "q":
                 if self.suppress:
                     self.suppress = False
@@ -501,7 +506,14 @@ class Chitin(object):
         for pos in range(self.curr_result_ptr-1, -1, -1) + range(self.MAX_RESULTS-1,self.curr_result_ptr,-1):
             block = self.results[pos]
             if block is not None:
-                print "(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_block"]["cmd"][:61])
+                print("(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_block"]["cmd"][:61]))
+
+    def print_stdout(self, pos):
+        #TODO Would be well nice if we could just spawn `less` with the stdout lines here...
+        block = self.results[pos]
+        if block is not None:
+            print("(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_block"]["cmd"][:61]))
+            print(block["stdout"])
 
 
 def shell():
@@ -525,6 +537,7 @@ def shell():
     for failed in util.check_integrity_set(set(".")):
         print("[WARN] '%s' has been modified outside of lab book." % failed)
     try:
+        skip = False
         while True:
             cmd_str = ""
             while len(cmd_str.strip()) == 0:
@@ -538,8 +551,10 @@ def shell():
                 else:
                     current_prompt = u'' + current_prompt
 
-                c.print_results()
-                print("")
+                if not skip:
+                    c.print_results()
+                    if len(cmd_str.strip()) > 0:
+                        print("")
 
                 cmd_str = prompt(current_prompt,
                         history=cmd_history,
@@ -550,7 +565,6 @@ def shell():
                         style=style,
                         on_abort=AbortAction.RETRY,
                 )
-
 
             fields = cmd_str.split(" ")
             command_set = [" ".join(fields)]
