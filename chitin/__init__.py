@@ -20,7 +20,7 @@ from pygments.lexers import BashLexer
 import cmd
 import util
 
-VERSION = "Chitin 0.0.1a: Curious Crustacean"
+VERSION = "Chitin 0.0.2a: Curious Crustacean (develop)"
 WELCOME = VERSION + """
 Please don't rely on the database schema to be the same tomorrow... <3
 
