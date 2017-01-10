@@ -42,7 +42,8 @@ Currently interactive and multi-line commands don't work, sorry about that.
 %q                      Switch suppression of stderr and stdout
 %i                      Switch performing full pre-command integrity checks
 
-%o <job>                Show stdout for given job number
+%j                      Show command result buffer list
+%o <job>                Show stdout for given command result number
 """
 
 def history(file_path):
@@ -384,6 +385,10 @@ class Chitin(object):
             elif special_cmd == "o":
                 self.print_stdout(int(fields[1]))
                 SKIP = True
+            elif special_cmd == "j":
+                self.print_results(force=True)
+                print("")
+                SKIP = True
             elif special_cmd == "q":
                 if self.suppress:
                     self.suppress = False
@@ -493,6 +498,7 @@ class Chitin(object):
         return fixed_blocks
 
     def move_result_q(self):
+        temp_ptr = self.curr_result_ptr
         while not self.result_q.empty():
             block = self.result_q.get()
             self.results[self.curr_result_ptr] = block
@@ -500,13 +506,14 @@ class Chitin(object):
 
             if self.curr_result_ptr == self.MAX_RESULTS:
                 self.curr_result_ptr = 0
+        return temp_ptr != self.curr_result_ptr
 
-    def print_results(self):
-        self.move_result_q()
-        for pos in range(self.curr_result_ptr-1, -1, -1) + range(self.MAX_RESULTS-1,self.curr_result_ptr,-1):
-            block = self.results[pos]
-            if block is not None:
-                print("(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_block"]["cmd"][:61]))
+    def print_results(self, force=False):
+        if self.move_result_q() or force:
+            for pos in range(self.curr_result_ptr-1, -1, -1) + range(self.MAX_RESULTS-1,self.curr_result_ptr,-1):
+                block = self.results[pos]
+                if block is not None:
+                    print("(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_block"]["cmd"][:61]))
 
     def print_stdout(self, pos):
         #TODO Would be well nice if we could just spawn `less` with the stdout lines here...
