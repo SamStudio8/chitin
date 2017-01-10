@@ -584,5 +584,9 @@ def shell():
         print("Bye!")
 
 
+def make_web():
+    from record import app
+    app.run()
+
 if __name__ == "__main__":
     shell()

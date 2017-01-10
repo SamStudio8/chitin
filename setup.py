@@ -36,6 +36,7 @@ setuptools.setup(
     entry_points = {
         'console_scripts': [
             'chitin = chitin:shell',
+            'chitin-web = chitin:make_web',
         ]
     },
 
