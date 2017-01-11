@@ -8,6 +8,7 @@
     {% for run in exp.runs %}
     <tr>
         <td><b><a href="{{ url_for('run_detail', run=run.uuid) }}">{{ run.uuid }}</a></b></td>
+        <td>{{ run.get_event_count() }} ({{ run.groups.count() }})</td>
         {% for meta in run.rmeta %}
             <td>{{ meta.value }}</td>
         {% endfor %}

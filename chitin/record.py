@@ -48,6 +48,12 @@ class Run(db.Model):
     def get_path(self):
         return os.path.join(self.exp.get_path(), self.uuid)
 
+    def get_event_count(self):
+        count = 0
+        for g in self.groups:
+            count += g.events.count()
+        return count
+
 class EventGroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 

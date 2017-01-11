@@ -5,7 +5,7 @@ import sys
 import uuid
 
 from datetime import datetime
-from multiprocessing import Process, Queue, Manager
+from multiprocessing import Process, Queue
 from time import sleep
 
 from prompt_toolkit import prompt, AbortAction
@@ -19,6 +19,10 @@ from pygments.lexers import BashLexer
 
 import cmd
 import util
+
+#import multiprocessing, logging
+#mpl = multiprocessing.log_to_stderr()
+#mpl.setLevel(logging.DEBUG)
 
 VERSION = "Chitin 0.0.2a: Curious Crustacean (develop)"
 WELCOME = VERSION + """
@@ -182,10 +186,8 @@ special_commands = {
 
 class ChitinDaemon(object):
 
-    def __init__(self, MAX_PROC=32):
-        self.MAX_PROC = MAX_PROC
-
-    def handle_post(self, block, output_q):
+    @staticmethod
+    def handle_post(block, output_q):
         # disgusting
         stdout = block["stdout"]
         stderr = block["stderr"]
@@ -252,36 +254,54 @@ class ChitinDaemon(object):
         block.update({"post": True})
         output_q.put(block)
 
-    def orchestrate(self, cmd_q, output_q, result_q):
-        process_dict = {}
-        completed_uuid = set()
-        WAIT_FOR_DONE = False
-        while True:
-            if len(process_dict) == 0 and cmd_q.qsize() == 0 and output_q.qsize() == 0 and WAIT_FOR_DONE is True:
-                return
+    @staticmethod
+    def orchestrate(cmd_q, output_q, result_q, MAX_PROC, SHELL_MODE):
+        try:
+            process_dict = {}
+            completed_uuid = set()
+            uuids_remaining = 0
+            WAIT_FOR_DONE = False
+            DONE_ANYTHING = False
+            while True:
+                if not SHELL_MODE and len(process_dict) == 0 and uuids_remaining == 0 and WAIT_FOR_DONE:
+                    break
 
-            if len(process_dict) < self.MAX_PROC + 1:
-                while not output_q.empty():
-                    block = output_q.get()
-                    if not block:
+                while True:
+                    try:
+                        block = output_q.get(False)
+                    except:
                         break
 
                     cmd_uuid = block["uuid"]
                     if "post" in block:
                         process_dict[cmd_uuid].terminate()
-                        result_q.put(block)
+
+                        if SHELL_MODE:
+                            result_q.put(block)
                         del process_dict[cmd_uuid]
                         completed_uuid.add(cmd_uuid)
+                        uuids_remaining -= 1
+                        DONE_ANYTHING = True
+
+                        if block["cmd_block"]["blocked_by_uuid"]:
+                            completed_uuid.remove(block["cmd_block"]["blocked_by_uuid"])
                     else:
                         process_dict[cmd_uuid].terminate()
-                        process_dict[cmd_uuid] = Process(target=self.handle_post,
+                        process_dict[cmd_uuid] = Process(target=ChitinDaemon.handle_post,
                                 args=(block, output_q))
+                        process_dict[cmd_uuid].daemon = True
                         process_dict[cmd_uuid].start()
 
-                if len(process_dict) < self.MAX_PROC - 1:
-                    block = cmd_q.get()
+                if len(process_dict) < MAX_PROC - 1 and not WAIT_FOR_DONE:
+                    block = None
+                    try:
+                        block = cmd_q.get(False)
+                    except:
+                        pass
+
                     if not block:
-                        WAIT_FOR_DONE = True
+                        if DONE_ANYTHING and not SHELL_MODE:
+                            WAIT_FOR_DONE = True
                         continue
 
                     cmd_uuid = block["uuid"]
@@ -290,15 +310,24 @@ class ChitinDaemon(object):
                             cmd_q.put(block)
                             continue
 
-                    process_dict[cmd_uuid] = Process(target=self.run_command,
+                    process_dict[cmd_uuid] = Process(target=ChitinDaemon.run_command,
                             args=(block, output_q))
+                    process_dict[cmd_uuid].daemon = True
                     process_dict[cmd_uuid].start()
-            else:
-                print("zzz")
-                sleep(1)
+                    uuids_remaining += 1
+                else:
+                    print("zzz")
+                    sleep(1)
+        except Exception as e:
+            print("[DEAD] Fatal error occurred during command orchestration. The daemon has terminated.")
+            print(e)
+            return
+        finally:
+            cmd_q.close()
+            output_q.close()
 
-
-    def run_command(self, block, output_q):
+    @staticmethod
+    def run_command(block, output_q):
         # Check whether files have been altered outside of environment before proceeding
         for failed in util.check_integrity_set(block["wd"] | block["wf"], file_tokens=block["tokens"]["files"], skip_check=block["skip_integrity"]):
                 print("[WARN] '%s' has been modified outside of lab book." % failed)
@@ -330,7 +359,7 @@ class ChitinDaemon(object):
 
 class Chitin(object):
 
-    def __init__(self, MAX_PROC=32):
+    def __init__(self, MAX_PROC=32, SHELL_MODE=False):
         self.variables = {}
         self.meta = {}
 
@@ -349,13 +378,9 @@ class Chitin(object):
 
         self.show_stderr=False
 
-        d = ChitinDaemon(MAX_PROC=MAX_PROC)
-        self.d = d
-
-        daemon = Process(target=d.orchestrate,
-            args=(self.cmd_q, self.out_q, self.result_q))
-        daemon.start()
-
+        self.daemon = Process(target=ChitinDaemon.orchestrate,
+            args=(self.cmd_q, self.out_q, self.result_q, MAX_PROC, SHELL_MODE))
+        self.daemon.start()
 
     def queue_command(self, cmd_uuid, group_id, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, blocked_by, self_flags):
         self.cmd_q.put({
@@ -525,7 +550,7 @@ class Chitin(object):
             print(block["stdout"])
 
 def shell():
-    c = Chitin()
+    c = Chitin(SHELL_MODE=True)
 
     cmd_history = FileHistory(os.path.expanduser('~') + '/.chitin.history')
     print(WELCOME)
@@ -587,6 +612,7 @@ def shell():
 
     except EOFError:
         print("Bye!")
+        c.daemon.terminate()
 
 
 def make_web():
