@@ -512,12 +512,6 @@ class Chitin(object):
             print("(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_block"]["cmd"][:61]))
             print(block["stdout"])
 
-    def register_experiment(self):
-        pass
-
-    def register_run(self):
-        pass
-
 def shell():
     c = Chitin()
 

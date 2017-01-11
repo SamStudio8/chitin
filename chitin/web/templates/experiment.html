@@ -1,0 +1,12 @@
+{% include 'header.html' %}
+<h3>{{ exp.uuid }}</h3>
+{% for run in exp.runs %}
+<h4>{{ run.uuid }}</h4>
+    {% for group in run.groups %}
+        {% for event in group.events %}
+            {{ event.cmd }}
+        {% endfor %}
+    {% endfor %}
+{% endfor %}
+{% include 'footer.html' %}
+

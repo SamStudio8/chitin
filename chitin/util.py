@@ -65,8 +65,13 @@ def get_status(path, cmd_str=""):
 
     return (status, h, last_h)
 
-def add_event_group(path):
-    event_group = record.EventGroup()
+def add_event_group(run_uuid):
+    run = None
+    try:
+        run = record.Run.query.filter(record.Run.uuid==str(run_uuid))[0]
+    except IndexError as e:
+        pass
+    event_group = record.EventGroup(run=run)
     record.db.session.add(event_group)
     record.db.session.commit()
     return event_group.id
@@ -87,7 +92,10 @@ def add_file_record(path, digest, cmd_str, status=False, parent=None, meta=None,
             pass
 
     if not event:
-        event = record.Event(cmd_str, uuid, group_id)
+        group = None
+        if group_id:
+            group = record.EventGroup.query.get(group_id)
+        event = record.Event(cmd_str, uuid, group)
         record.db.session.add(event)
 
         if meta:
@@ -306,3 +314,26 @@ def check_status_path_set(path_set):
         "hashes": hashes,
         "dups": moves,
     }
+
+def register_experiment(path):
+    exp = record.Experiment(path)
+    record.db.session.add(exp)
+    record.db.session.commit()
+    return exp
+
+def register_run(exp_uuid, meta=None):
+    try:
+        exp = record.Experiment.query.filter(record.Experiment.uuid==str(exp_uuid))[0]
+    except IndexError as e:
+        return None
+
+    run = record.Run(exp)
+    record.db.session.add(run)
+
+    if meta:
+        for key in meta:
+            datum = record.RunMetadatum(run, key, meta[key])
+            record.db.session.add(datum)
+    record.db.session.commit()
+    return run
+

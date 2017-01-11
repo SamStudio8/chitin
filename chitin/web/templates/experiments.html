@@ -1,0 +1,5 @@
+{% include 'header.html' %}
+{% for e in experiments %}
+<h3><a href="{{ url_for('experiment_detail', experiment=e.uuid) }}">{{ e.uuid }}</a></h3>
+{% endfor %}
+{% include 'footer.html' %}

@@ -39,11 +39,11 @@ class Run(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
 
     exp_id = db.Column(db.Integer, db.ForeignKey('experiment.uuid'))
-    exp = db.relationship('Experiment', backref=db.backref('meta', lazy='dynamic'))
+    exp = db.relationship('Experiment', backref=db.backref('runs', lazy='dynamic'))
 
-    def __init__(self, exp_uuid):
+    def __init__(self, exp):
         self.uuid = str(uuid.uuid4())
-        self.exp = exp_uuid
+        self.exp = exp
 
     def get_path(self):
         return os.path.join(self.exp.get_path(), self.uuid)
@@ -52,11 +52,11 @@ class EventGroup(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     run_uuid = db.Column(db.Integer, db.ForeignKey('run.uuid'))
-    run = db.relationship('Run', backref=db.backref('meta', lazy='dynamic'))
+    run = db.relationship('Run', backref=db.backref('groups', lazy='dynamic'))
 
-    def __init__(self, run_uuid=None):
-        if run_uuid is not None:
-            self.run = run_uuid
+    def __init__(self, run=None):
+        if run is not None:
+            self.run = run
 
 class RunMetadatum(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -66,8 +66,8 @@ class RunMetadatum(db.Model):
     run_uuid = db.Column(db.Integer, db.ForeignKey('run.uuid'))
     run = db.relationship('Run', backref=db.backref('rmeta', lazy='dynamic'))
 
-    def __init__(self, run_uuid, key, value):
-        self.run = run_uuid
+    def __init__(self, run, key, value):
+        self.run = run
         self.key = key
         self.value = str(value)
 
@@ -106,14 +106,14 @@ class Event(db.Model):
     timestamp = db.Column(db.DateTime)
     user = db.Column(db.String(40))
 
-    event_group_id = db.Column(db.Integer, db.ForeignKey('event_group.id'))
-    event_group = db.relationship('EventGroup', backref=db.backref('meta', lazy='dynamic'))
+    group_id = db.Column(db.Integer, db.ForeignKey('event_group.id'))
+    group = db.relationship('EventGroup', backref=db.backref('events', lazy='dynamic'))
 
-    def __init__(self, cmd_str, event_uuid, group_id):
+    def __init__(self, cmd_str, event_uuid, group=None):
         self.cmd = cmd_str
         self.user = getpass.getuser()
         self.timestamp = datetime.datetime.now()
-        self.group = group_id
+        self.group = group
 
         if not event_uuid:
             event_uuid = str(uuid.uuid4())
