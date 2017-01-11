@@ -1,24 +1,19 @@
 {% include 'header.html' %}
-<h3>{{ exp.uuid }}</h3>
-{% for run in exp.runs %}
-<b>{{ run.uuid }}</b></br>
-    {% for group in run.groups %}
-        {% for event in group.events %}
-            {{ event.cmd }}
-            <table class="table">
-                <thead>
-                </thead>
-                <tbody>
-                {% for file in event.items %}
-                <tr>
-                    <td>{{ file.result_type }}</td>
-                    <td>{{ file.item.path }}</td>
-                </tr>
-                {% endfor %}
-                </tbody>
-            </table>
+<b>Experiment#</b>
+<h3 style="margin-top:0; padding-top:0;">{{ exp.uuid }}</h3>
+<table class="table">
+    <thead>
+    </thead>
+    <tbody>
+    {% for run in exp.runs %}
+    <tr>
+        <td><b><a href="{{ url_for('run_detail', run=run.uuid) }}">{{ run.uuid }}</a></b></td>
+        {% for meta in run.rmeta %}
+            <td>{{ meta.value }}</td>
         {% endfor %}
+    </tr>
     {% endfor %}
-{% endfor %}
+    </tbody>
+</table>
 {% include 'footer.html' %}
 

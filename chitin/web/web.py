@@ -14,3 +14,8 @@ def experiment_list():
 def experiment_detail(experiment):
     exp = record.Experiment.query.get_or_404(experiment)
     return render_template('experiment.html', exp=exp)
+
+@record.app.route('/run/<run>')
+def run_detail(run):
+    run = record.Run.query.get_or_404(run)
+    return render_template('run.html', run=run)

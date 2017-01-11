@@ -5,7 +5,7 @@ import sys
 import uuid
 
 from datetime import datetime
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Manager
 from time import sleep
 
 from prompt_toolkit import prompt, AbortAction
@@ -184,12 +184,14 @@ class ChitinDaemon(object):
 
     def __init__(self, MAX_PROC=32):
         self.MAX_PROC = MAX_PROC
-        self.processes = {}
 
     def handle_post(self, block, output_q):
         # disgusting
         stdout = block["stdout"]
         stderr = block["stderr"]
+
+        if block["cmd_block"]["show_stderr"]:
+            sys.stderr.write(stderr)
 
         end_clock = block["end_clock"]
         start_clock = block["start_clock"]
@@ -227,6 +229,9 @@ class ChitinDaemon(object):
         meta.update(input_meta)
         meta["run"] = run_meta
 
+        # Terrible way to run filetype handlers
+        util.check_integrity_set(watched_files | new_files, file_tokens=token_p["files"], skip_check=block["cmd_block"]["skip_integrity"])
+
         # Look for changes
         status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
         if status["codes"]["U"] != sum(status["codes"].values()):
@@ -247,57 +252,56 @@ class ChitinDaemon(object):
         block.update({"post": True})
         output_q.put(block)
 
-
     def orchestrate(self, cmd_q, output_q, result_q):
-        try_outs = False
-        WAIT_TO_DONE = False
+        process_dict = {}
+        completed_uuid = set()
+        WAIT_FOR_DONE = False
         while True:
-            sleep(1)
-            if cmd_q.empty() or try_outs == True or WAIT_TO_DONE == True:
-                try_outs = False
-                if output_q.empty():
-                    if WAIT_TO_DONE == True and len(self.processes) == 0:
-                        return
-                    continue
+            if len(process_dict) == 0 and cmd_q.qsize() == 0 and output_q.qsize() == 0 and WAIT_FOR_DONE is True:
+                return
 
-                block = output_q.get()
-                cmd_uuid = block["uuid"]
-
-                if "post" in block:
-                    self.processes[cmd_uuid].terminate()
-                    result_q.put(block)
-                    del self.processes[cmd_uuid]
-                else:
-                    self.processes[cmd_uuid].terminate()
-                    self.processes[cmd_uuid] = Process(target=self.handle_post,
-                            args=(block, output_q))
-                    self.processes[cmd_uuid].start()
-
-            else:
-                if len(self.processes) < self.MAX_PROC:
-                    block = cmd_q.get()
-
+            if len(process_dict) < self.MAX_PROC + 1:
+                while not output_q.empty():
+                    block = output_q.get()
                     if not block:
-                        WAIT_TO_DONE = True
+                        break
+
+                    cmd_uuid = block["uuid"]
+                    if "post" in block:
+                        process_dict[cmd_uuid].terminate()
+                        result_q.put(block)
+                        del process_dict[cmd_uuid]
+                        completed_uuid.add(cmd_uuid)
+                    else:
+                        process_dict[cmd_uuid].terminate()
+                        process_dict[cmd_uuid] = Process(target=self.handle_post,
+                                args=(block, output_q))
+                        process_dict[cmd_uuid].start()
+
+                if len(process_dict) < self.MAX_PROC - 1:
+                    block = cmd_q.get()
+                    if not block:
+                        WAIT_FOR_DONE = True
                         continue
 
                     cmd_uuid = block["uuid"]
-                    self.processes[cmd_uuid] = Process(target=self.run_command,
-                            args=(block, output_q))
-                    self.processes[cmd_uuid].start()
-                else:
-                    print("Not enough processes currently. Will wait a little while.")
-                    try_outs = True
+                    if block["blocked_by_uuid"] is not None:
+                        if block["blocked_by_uuid"] not in completed_uuid:
+                            cmd_q.put(block)
+                            continue
 
+                    process_dict[cmd_uuid] = Process(target=self.run_command,
+                            args=(block, output_q))
+                    process_dict[cmd_uuid].start()
+            else:
+                print("zzz")
+                sleep(1)
 
 
     def run_command(self, block, output_q):
         # Check whether files have been altered outside of environment before proceeding
-        if not block["skip_integrity"]:
-            for failed in util.check_integrity_set(block["wd"] | block["wf"], file_tokens=block["tokens"]["files"]):
+        for failed in util.check_integrity_set(block["wd"] | block["wf"], file_tokens=block["tokens"]["files"], skip_check=block["skip_integrity"]):
                 print("[WARN] '%s' has been modified outside of lab book." % failed)
-        else:
-            print("[WARN] You are brave... PRE-COMMAND INTEGRITY CHECKS ARE DISABLED")
 
         # Check whether any named files have results (usages) attached to files that
         # haven't been signed off...?
@@ -326,7 +330,7 @@ class ChitinDaemon(object):
 
 class Chitin(object):
 
-    def __init__(self):
+    def __init__(self, MAX_PROC=32):
         self.variables = {}
         self.meta = {}
 
@@ -343,16 +347,20 @@ class Chitin(object):
         self.curr_result_ptr = 0
         self.results = [None] * self.MAX_RESULTS
 
-        d = ChitinDaemon(MAX_PROC=32)
+        self.show_stderr=False
+
+        d = ChitinDaemon(MAX_PROC=MAX_PROC)
         self.d = d
-        daemon = Process(target=d.orchestrate, #TODO This seems to actually copy Chitin to the worker
+
+        daemon = Process(target=d.orchestrate,
             args=(self.cmd_q, self.out_q, self.result_q))
         daemon.start()
 
 
-    def queue_command(self, cmd_uuid, group_id, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, self_flags):
+    def queue_command(self, cmd_uuid, group_id, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, blocked_by, self_flags):
         self.cmd_q.put({
             "uuid": cmd_uuid,
+            "blocked_by_uuid": blocked_by,
             "group": group_id,
             "cmd": cmd_str,
             "env_vars": env_vars,
@@ -362,6 +370,7 @@ class Chitin(object):
             "tokens": tokens,
             "skip_integrity": self_flags["skip_integ"],
             "ignore_parents": self_flags["ignore_parents"],
+            "show_stderr": self_flags["show_stderr"],
         })
 
     def attempt_special(self, cmd_str):
@@ -401,11 +410,13 @@ class Chitin(object):
 
     def super_handle(self, command_set, dry=False, run=None):
         event_group_id = util.add_event_group(run)
+        last_uuid = None
         for command_i, command in enumerate(command_set):
-            self.handle_command(command.split(" "), self.variables, self.meta, dry, group=event_group_id)
+            cmd_uuid = str(uuid.uuid4())
+            self.handle_command(cmd_uuid, command.split(" "), self.variables, self.meta, dry, group=event_group_id, blocked_by=last_uuid)
+            last_uuid = cmd_uuid
 
-    def handle_command(self, fields, env_variables, input_meta, dry=False, group=None):
-        cmd_uuid = str(uuid.uuid4())
+    def handle_command(self, cmd_uuid, fields, env_variables, input_meta, dry=False, group=None, blocked_by=None):
 
         # Determine files and folders on which to watch for changes
         token_p = util.parse_tokens(fields, env_variables, ignore_parents=self.ignore_parents)
@@ -424,9 +435,10 @@ class Chitin(object):
             }
 
         ### Queue for Execution
-        self.queue_command(cmd_uuid, group, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p, {
+        self.queue_command(cmd_uuid, group, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p, blocked_by, {
                  "skip_integ": self.skip_integrity,
                  "ignore_parents": self.ignore_parents,
+                 "show_stderr": self.show_stderr,
         })
 
 

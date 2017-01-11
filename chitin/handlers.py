@@ -176,3 +176,11 @@ class VcfFileHandler(FiletypeHandler):
         except:
             return {}
 
+class FastqFileHandler(FiletypeHandler):
+    def check_integrity(self):
+        return {
+            ("not_empty", "is empty"): os.path.getsize(self.path) > 0,
+        }
+
+    def make_metadata(self):
+        return {}

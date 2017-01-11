@@ -11,6 +11,8 @@ command_handlers = {
 filetype_handlers = {
     "bam": handlers.BamFileHandler,
     "vcf": handlers.VcfFileHandler,
+    "fq": handlers.FastqFileHandler,
+    "fastq": handlers.FastqFileHandler,
 }
 
 def attempt_parse_type(path):

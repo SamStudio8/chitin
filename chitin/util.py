@@ -118,14 +118,16 @@ def add_file_record(path, digest, cmd_str, status=False, parent=None, meta=None,
 
     record.db.session.commit()
 
-def check_integrity_set(path_set, file_tokens=None):
+def check_integrity_set(path_set, file_tokens=None, skip_check=False):
     if not file_tokens:
         file_tokens = []
     failed = []
     for item in path_set:
         item = os.path.abspath(item)
-        if check_integrity(item, is_token=item in file_tokens):
+        if check_integrity(item, is_token=item in file_tokens, skip_check=skip_check):
             failed.append(item)
+        if skip_check:
+            continue
 
         if os.path.isdir(item):
             for subitem in os.listdir(item):
@@ -149,31 +151,36 @@ def check_integrity_set(path_set, file_tokens=None):
                         failed.append(i_abspath)
     return sorted(failed)
 
-def check_integrity(path, is_token=False):
+def check_integrity(path, is_token=False, skip_check=False):
     abspath = os.path.abspath(path)
     broken_integrity = False
     broken_rules = {}
 
-    path_record = get_file_record(abspath)
-    if os.path.exists(abspath):
-        if os.path.isfile(abspath):
-            h = hashfile(abspath)
-            broken_rules = attempt_integrity_type(abspath)
-        elif os.path.isdir(abspath):
-            h = hashfiles([os.path.join(abspath,f) for f in os.listdir(abspath) if os.path.isfile(os.path.join(abspath,f))])
+    if skip_check:
+        if os.path.exists(abspath):
+            if os.path.isfile(abspath):
+                broken_rules = attempt_integrity_type(abspath)
+    else:
+        path_record = get_file_record(abspath)
+        if os.path.exists(abspath):
+            if os.path.isfile(abspath):
+                broken_rules = attempt_integrity_type(abspath)
+                h = hashfile(abspath)
+            elif os.path.isdir(abspath):
+                h = hashfiles([os.path.join(abspath,f) for f in os.listdir(abspath) if os.path.isfile(os.path.join(abspath,f))])
 
-        if path_record:
-            # Path exists and we knew about it
-            if path_record.get_last_digest() != h:
-                add_file_record(abspath, h, "MODIFIED by (?)")
+            if path_record:
+                # Path exists and we knew about it
+                if path_record.get_last_digest() != h:
+                    add_file_record(abspath, h, "MODIFIED by (?)")
+                    broken_integrity = True
+            else:
+                # Path exists but it is a surprise
+                add_file_record(abspath, h, "CREATED by (?)")
                 broken_integrity = True
-        else:
-            # Path exists but it is a surprise
-            add_file_record(abspath, h, "CREATED by (?)")
+        elif path_record:
+            add_file_record(abspath, h, "DELETED by (?)")
             broken_integrity = True
-    elif path_record:
-        add_file_record(abspath, h, "DELETED by (?)")
-        broken_integrity = True
 
     #TODO I don't want this here but I can't be bothered to move it right now
     if is_token:
