@@ -173,18 +173,8 @@ def needed(path, hash):
     for ie in reversed(needed_ies):
         print ie
 
-def discover(path):
-    abspath = os.path.abspath(path)
-    status = util.check_status_path_set(set(abspath))
-    print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status.items(), key=lambda s: s[0]) if v!='U']))
-    for path, status_code in status.items():
-        if status_code == "C":
-            status_code = "A"
-        util.write_status(path, status_code, cmd_str)
-
 special_commands = {
     "history": history,
-    #"discover": discover,
     "how": how,
     "needed": needed,
     "hashdir": hashdir,
@@ -207,6 +197,7 @@ class ChitinDaemon(object):
         return_code = block["return_code"]
         cmd_str = block["cmd_block"]["cmd"]
         cmd_uuid = block["cmd_block"]["uuid"]
+        event_group_id = block["cmd_block"]["group"]
         input_meta = block["cmd_block"]["input_meta"]
 
         watched_dirs = block["cmd_block"]["wd"]
@@ -247,7 +238,7 @@ class ChitinDaemon(object):
                     usage = True
                     if path not in fields:
                         continue
-                util.write_status(path, status_code, cmd_str, usage=usage, meta=meta, uuid=cmd_uuid)
+                util.write_status(path, status_code, cmd_str, usage=usage, meta=meta, uuid=cmd_uuid, group=event_group_id)
 
         #message = "%s (%s): %d files changed, %d created, %d deleted." % (
         #        cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
@@ -359,9 +350,10 @@ class Chitin(object):
         daemon.start()
 
 
-    def queue_command(self, cmd_uuid, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, self_flags):
+    def queue_command(self, cmd_uuid, group_id, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, self_flags):
         self.cmd_q.put({
             "uuid": cmd_uuid,
+            "group": group_id,
             "cmd": cmd_str,
             "env_vars": env_vars,
             "wd": watch_dirs,
@@ -407,11 +399,12 @@ class Chitin(object):
                     print("Likely incorrect usage of '%s'" % special_cmd)
         return SKIP, command_set
 
-    def super_handle(self, command_set, dry=False):
+    def super_handle(self, command_set, dry=False, run=None):
+        event_group_id = util.add_event_group(run)
         for command_i, command in enumerate(command_set):
-            self.handle_command(command.split(" "), self.variables, self.meta, dry)
+            self.handle_command(command.split(" "), self.variables, self.meta, dry, group=event_group_id)
 
-    def handle_command(self, fields, env_variables, input_meta, dry=False):
+    def handle_command(self, fields, env_variables, input_meta, dry=False, group=None):
         cmd_uuid = str(uuid.uuid4())
 
         # Determine files and folders on which to watch for changes
@@ -431,7 +424,7 @@ class Chitin(object):
             }
 
         ### Queue for Execution
-        self.queue_command(cmd_uuid, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p, {
+        self.queue_command(cmd_uuid, group, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p, {
                  "skip_integ": self.skip_integrity,
                  "ignore_parents": self.ignore_parents,
         })
@@ -519,6 +512,12 @@ class Chitin(object):
             print("(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_block"]["cmd"][:61]))
             print(block["stdout"])
 
+    def register_experiment(self):
+        pass
+
+    def register_run(self):
+        pass
+
 def shell():
     c = Chitin()
 
@@ -586,6 +585,7 @@ def shell():
 
 def make_web():
     from record import app
+    import web.web
     app.run()
 
 if __name__ == "__main__":

@@ -31,6 +31,12 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     include_package_data=True,
 
+    package_data={
+        "chitin": [
+            "web/templates/*html",
+        ]
+    },
+
     install_requires=requirements,
 
     entry_points = {
@@ -48,5 +54,7 @@ setuptools.setup(
     ],
 
     test_suite="tests",
-    tests_require=test_requirements
+    tests_require=test_requirements,
+
+    zip_safe=False, #https://github.com/pallets/flask/issues/1562
 )

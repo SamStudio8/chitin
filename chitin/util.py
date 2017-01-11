@@ -19,7 +19,7 @@ def get_file_record(path):
         return None
     return item
 
-def write_status(path, status, cmd_str, meta=None, usage=False, uuid=None):
+def write_status(path, status, cmd_str, meta=None, usage=False, uuid=None, group=None):
     abspath = os.path.abspath(path)
 
     if os.path.exists(abspath):
@@ -30,7 +30,7 @@ def write_status(path, status, cmd_str, meta=None, usage=False, uuid=None):
     else:
         h = 0
 
-    add_file_record(abspath, h, cmd_str, meta=meta, status=status, uuid=uuid)
+    add_file_record(abspath, h, cmd_str, meta=meta, status=status, uuid=uuid, group_id=group)
 
 def get_status(path, cmd_str=""):
     abspath = os.path.abspath(path)
@@ -65,7 +65,14 @@ def get_status(path, cmd_str=""):
 
     return (status, h, last_h)
 
-def add_file_record(path, digest, cmd_str, status=False, parent=None, meta=None, uuid=None):
+def add_event_group(path):
+    event_group = record.EventGroup()
+    record.db.session.add(event_group)
+    record.db.session.commit()
+    return event_group.id
+
+
+def add_file_record(path, digest, cmd_str, status=False, parent=None, meta=None, uuid=None, group_id=None):
     item = get_file_record(path)
     if not item:
         item = record.Item(path)
@@ -80,7 +87,7 @@ def add_file_record(path, digest, cmd_str, status=False, parent=None, meta=None,
             pass
 
     if not event:
-        event = record.Event(cmd_str, str(uuid))
+        event = record.Event(cmd_str, uuid, group_id)
         record.db.session.add(event)
 
         if meta:
