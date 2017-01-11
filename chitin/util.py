@@ -315,13 +315,20 @@ def check_status_path_set(path_set):
         "dups": moves,
     }
 
-def register_experiment(path):
+def register_experiment(path, create_dir=False):
     exp = record.Experiment(path)
     record.db.session.add(exp)
     record.db.session.commit()
+
+    if create_dir:
+        try:
+            os.mkdir(exp.get_path())
+        except:
+            #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
+            print("[WARN] Encountered trouble creating %s" % path)
     return exp
 
-def register_run(exp_uuid, meta=None):
+def register_run(exp_uuid, create_dir=False, meta=None):
     try:
         exp = record.Experiment.query.filter(record.Experiment.uuid==str(exp_uuid))[0]
     except IndexError as e:
@@ -335,5 +342,12 @@ def register_run(exp_uuid, meta=None):
             datum = record.RunMetadatum(run, key, meta[key])
             record.db.session.add(datum)
     record.db.session.commit()
+
+    if create_dir:
+        try:
+            os.mkdir(run.get_path())
+        except:
+            #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
+            print("[WARN] Encountered trouble creating %s" % path)
     return run
 
