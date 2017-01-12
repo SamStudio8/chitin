@@ -434,6 +434,9 @@ class Chitin(object):
         return SKIP, command_set
 
     def super_handle(self, command_set, dry=False, run=None):
+        self.execute(command_set, dry=dry, run=run)
+
+    def execute(self, command_set, dry=False, run=None):
         event_group_id = util.add_event_group(run)
         last_uuid = None
         for command_i, command in enumerate(command_set):
@@ -608,7 +611,7 @@ def shell():
             if len(special_command_set) > 0:
                 command_set = special_command_set
 
-            c.super_handle(command_set)
+            c.execute(command_set)
 
     except EOFError:
         print("Bye!")

@@ -7,7 +7,8 @@ requirements = [
     "prompt_toolkit",
     "pygments",
     "SQLAlchemy",
-    "flask_sqlalchemy"
+    "flask_sqlalchemy",
+    "paramiko",
 ]
 
 test_requirements = [

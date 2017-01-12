@@ -358,3 +358,64 @@ def register_run(exp_uuid, create_dir=False, meta=None):
             print("[WARN] Encountered trouble creating %s" % path)
     return run
 
+def archive_experiment(exp_uuid, tar_path=None, manifest=True, new_root=None):
+    import tarfile
+    exp = record.Experiment.query.get(exp_uuid)
+    if not exp:
+        return None
+
+    def translate_tarinfo(info):
+        info.name = os.path.join(exp.uuid, "".join(info.name.split(exp.uuid)[1:])[1:])
+        if new_root:
+            info.name = os.path.join(new_root, info.name)
+        return info
+
+    if tar_path is None:
+        tar_path = os.path.join(exp.get_path(), exp.uuid + ".tar.gz")
+
+    tar = tarfile.open(tar_path, "w|gz")
+    tar.add(exp.get_path(), filter=translate_tarinfo)
+    tar.close()
+
+    return tar_path
+
+def copy_experiment_archive(exp_uuid, hostname, ssh_config_path=None, dest=None, new_root=None):
+    import paramiko
+
+    tar_path = archive_experiment(exp_uuid, new_root=new_root)
+
+    pw = getpass.getpass()
+
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    config = paramiko.SSHConfig()
+    if not ssh_config_path:
+        ssh_config_path = os.path.expanduser("~/.ssh/config")
+
+    config.parse(open(ssh_config_path))
+
+    connect_config = dict(config.lookup(hostname))
+    if 'user' in connect_config:
+        connect_config['username'] = connect_config['user']
+        del connect_config['user']
+    if 'proxycommand' in connect_config:
+        connect_config['sock'] = paramiko.ProxyCommand(connect_config['proxycommand'])
+        del connect_config['proxycommand']
+
+    connect_config["look_for_keys"] = False
+    connect_config["allow_agent"] = False
+    connect_config["password"] = pw
+    ssh.connect(**connect_config)
+
+    sftp = ssh.open_sftp()
+    if dest is not None:
+        sftp.chdir(dest)
+    print(sftp.put(tar_path, os.path.basename(tar_path), confirm=True))
+
+    if dest is None:
+        dest = "~"
+    stdin, stdout, stderr = ssh.exec_command('tar -xvPf ' + os.path.join(dest, os.path.basename(tar_path)))
+    print("".join(stdout.readlines()))
+    ssh.close()
+
