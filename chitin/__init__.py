@@ -231,9 +231,6 @@ class ChitinDaemon(object):
         meta.update(input_meta)
         meta["run"] = run_meta
 
-        # Terrible way to run filetype handlers
-        util.check_integrity_set(watched_files | new_files, file_tokens=token_p["files"], skip_check=block["cmd_block"]["skip_integrity"])
-
         # Look for changes
         status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
         if status["codes"]["U"] != sum(status["codes"].values()):
@@ -245,7 +242,10 @@ class ChitinDaemon(object):
                     usage = True
                     if path not in fields:
                         continue
-                util.write_status(path, status_code, cmd_str, usage=usage, meta=meta, uuid=cmd_uuid, group=event_group_id)
+                util.add_file_record(path, cmd_str, status=status_code, meta=meta, uuid=cmd_uuid, group_id=event_group_id)
+
+        # Terrible way to run filetype handlers
+        util.check_integrity_set(watched_files | new_files, file_tokens=token_p["files"], skip_check=block["cmd_block"]["skip_integrity"])
 
         #message = "%s (%s): %d files changed, %d created, %d deleted." % (
         #        cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]

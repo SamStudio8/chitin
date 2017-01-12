@@ -19,19 +19,6 @@ def get_file_record(path):
         return None
     return item
 
-def write_status(path, status, cmd_str, meta=None, usage=False, uuid=None, group=None):
-    abspath = os.path.abspath(path)
-
-    if os.path.exists(abspath):
-        if os.path.isfile(abspath):
-            h = hashfile(abspath)
-        elif os.path.isdir(abspath):
-            h = hashfiles([os.path.join(abspath,f) for f in os.listdir(abspath) if os.path.isfile(os.path.join(abspath,f))])
-    else:
-        h = 0
-
-    add_file_record(abspath, h, cmd_str, meta=meta, status=status, uuid=uuid, group_id=group)
-
 def get_status(path, cmd_str=""):
     abspath = os.path.abspath(path)
 
@@ -77,7 +64,7 @@ def add_event_group(run_uuid):
     return event_group.id
 
 
-def add_file_record(path, digest, cmd_str, status=False, parent=None, meta=None, uuid=None, group_id=None):
+def add_file_record(path, cmd_str, status=False, parent=None, meta=None, uuid=None, group_id=None):
     item = get_file_record(path)
     if not item:
         item = record.Item(path)
@@ -172,14 +159,14 @@ def check_integrity(path, is_token=False, skip_check=False):
             if path_record:
                 # Path exists and we knew about it
                 if path_record.get_last_digest() != h:
-                    add_file_record(abspath, h, "MODIFIED by (?)")
+                    add_file_record(abspath, "MODIFIED by (?)")
                     broken_integrity = True
             else:
                 # Path exists but it is a surprise
-                add_file_record(abspath, h, "CREATED by (?)")
+                add_file_record(abspath, "CREATED by (?)")
                 broken_integrity = True
         elif path_record:
-            add_file_record(abspath, h, "DELETED by (?)")
+            add_file_record(abspath, "DELETED by (?)")
             broken_integrity = True
 
     #TODO I don't want this here but I can't be bothered to move it right now
@@ -305,13 +292,6 @@ def check_status_path_set(path_set):
         file_codes[s] += 1
         codes[s] += 1
 
-    moves = {}
-    for path in file_statii:
-        if file_statii[path] == "C":
-            for hpath in hashes:
-                if hashes[path][0] == hashes[hpath][1] and hpath != path:
-                    moves[path] = "%s (%s)" % (hpath, hashes[hpath][1]) #todo did I break it
-
     return {
         "dirs": dir_statii,
         "files": file_statii,
@@ -319,7 +299,6 @@ def check_status_path_set(path_set):
         "f_codes": file_codes,
         "codes": codes,
         "hashes": hashes,
-        "dups": moves,
     }
 
 def register_experiment(path, create_dir=False):
@@ -375,14 +354,15 @@ def archive_experiment(exp_uuid, tar_path=None, manifest=True, new_root=None):
 
     tar = tarfile.open(tar_path, "w|gz")
     tar.add(exp.get_path(), filter=translate_tarinfo)
+
     tar.close()
 
     return tar_path
 
-def copy_experiment_archive(exp_uuid, hostname, ssh_config_path=None, dest=None, new_root=None):
+def copy_experiment_archive(exp_uuid, hostname, ssh_config_path=None, dest=None, new_root=None, manifest=False):
     import paramiko
 
-    tar_path = archive_experiment(exp_uuid, new_root=new_root)
+    tar_path = archive_experiment(exp_uuid, new_root=new_root, manifest=manifest)
 
     pw = getpass.getpass()
 
