@@ -531,8 +531,9 @@ class Chitin(object):
         temp_ptr = self.curr_result_ptr
         while not self.result_q.empty():
             block = self.result_q.get()
-            self.results[self.curr_result_ptr] = block
-            self.curr_result_ptr += 1
+            if block:
+                self.results[self.curr_result_ptr] = block
+                self.curr_result_ptr += 1
 
             if self.curr_result_ptr == self.MAX_RESULTS:
                 self.curr_result_ptr = 0
@@ -540,7 +541,7 @@ class Chitin(object):
 
     def print_results(self, force=False):
         if self.move_result_q() or force:
-            for pos in range(self.curr_result_ptr-1, -1, -1) + range(self.MAX_RESULTS-1,self.curr_result_ptr,-1):
+            for pos in range(self.curr_result_ptr-1, -1, -1) + range(self.MAX_RESULTS-1,self.curr_result_ptr-1,-1):
                 block = self.results[pos]
                 if block is not None:
                     print("(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_block"]["cmd"][:61]))
