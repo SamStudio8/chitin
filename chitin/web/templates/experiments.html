@@ -1,5 +1,13 @@
 {% include 'header.html' %}
-{% for e in experiments %}
-<h3><a href="{{ url_for('experiment_detail', experiment=e.uuid) }}">{{ e.uuid }}</a></h3>
-{% endfor %}
+<table class="table">
+    <thead>
+    </thead>
+    <tbody>
+    {% for e in experiments %}
+    <tr>
+        <td style="font-family:monospace;"><b><a href="{{ url_for('experiment_detail', experiment=e.uuid) }}">{{ e.uuid }}</a></b></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
 {% include 'footer.html' %}
