@@ -359,6 +359,22 @@ def archive_experiment(exp_uuid, tar_path=None, manifest=True, new_root=None):
 
     return tar_path
 
+def generate_experiment_manifest(exp_uuid, dest=None):
+    exp = record.Experiment.query.get(exp_uuid)
+    if not exp:
+        return None
+
+    if not dest:
+        dest = os.path.join(exp.get_path(), exp.uuid + ".manifest")
+    dest_fh = open(dest, "w")
+
+    for r in exp.runs:
+        dest_fh.write(
+            ("%s\t" % r.uuid) + "\t".join([m.value for m in r.rmeta]) + "\n"
+        )
+    dest_fh.close()
+
+
 def copy_experiment_archive(exp_uuid, hostname, ssh_config_path=None, dest=None, new_root=None, manifest=False):
     import paramiko
 

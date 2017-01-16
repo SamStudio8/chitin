@@ -187,7 +187,7 @@ special_commands = {
 class ChitinDaemon(object):
 
     @staticmethod
-    def handle_post(block, output_q):
+    def handle_post(block, post_q):
         # disgusting
         stdout = block["stdout"]
         stderr = block["stderr"]
@@ -210,6 +210,8 @@ class ChitinDaemon(object):
         if return_code > 0:
             # Should probably still check tokens and such...
             print("[WARN] Command %s exited with non-zero code." % cmd_str)
+            block.update({"post": True, "success": False})
+            post_q.put(block)
             return
 
         run_meta = {"wall": str(end_clock - start_clock)}
@@ -251,11 +253,11 @@ class ChitinDaemon(object):
         #        cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
         #)
 
-        block.update({"post": True})
-        output_q.put(block)
+        block.update({"post": True, "success": True})
+        post_q.put(block)
 
     @staticmethod
-    def orchestrate(cmd_q, output_q, result_q, MAX_PROC, SHELL_MODE):
+    def orchestrate(cmd_q, output_q, post_q, result_q, MAX_PROC, RES_PROC, SHELL_MODE):
         try:
             process_dict = {}
             completed_uuid = set()
@@ -266,36 +268,52 @@ class ChitinDaemon(object):
                 if not SHELL_MODE and len(process_dict) == 0 and uuids_remaining == 0 and WAIT_FOR_DONE:
                     break
 
+                # Clear all finished post-handle jobs (free any processes)
                 while True:
+                    block = None
                     try:
-                        block = output_q.get(False)
+                        block = post_q.get(False)
                     except:
                         break
 
                     cmd_uuid = block["uuid"]
-                    if "post" in block:
-                        process_dict[cmd_uuid].terminate()
+                    process_dict[cmd_uuid].terminate()
 
-                        if SHELL_MODE:
-                            result_q.put(block)
-                        del process_dict[cmd_uuid]
-                        completed_uuid.add(cmd_uuid)
-                        uuids_remaining -= 1
-                        DONE_ANYTHING = True
+                    if SHELL_MODE:
+                        result_q.put(block)
+                    del process_dict[cmd_uuid]
+                    completed_uuid.add(cmd_uuid)
+                    uuids_remaining -= 1
+                    DONE_ANYTHING = True
 
-                        if block["cmd_block"]["blocked_by_uuid"]:
-                            completed_uuid.remove(block["cmd_block"]["blocked_by_uuid"])
-                    else:
+                    if block["cmd_block"]["blocked_by_uuid"]:
+                        completed_uuid.remove(block["cmd_block"]["blocked_by_uuid"])
+
+                # Now try to check whether there's room to run some post-handles
+                if len(process_dict) < (MAX_PROC+RES_PROC):
+                    block = None
+                    try:
+                        block = output_q.get(False)
+                    except:
+                        pass
+
+                    if block:
+                        cmd_uuid = block["uuid"]
                         process_dict[cmd_uuid].terminate()
                         process_dict[cmd_uuid] = Process(target=ChitinDaemon.handle_post,
-                                args=(block, output_q))
+                                args=(block, post_q))
                         process_dict[cmd_uuid].daemon = True
                         process_dict[cmd_uuid].start()
 
-                if len(process_dict) < MAX_PROC - 1 and not WAIT_FOR_DONE:
+                        # We want to prioritise results processing to prevent
+                        # scenarios where future jobs are unqueueable due to
+                        # waiting on tasks that are completed but not marked as such
+                        continue
+
+                if len(process_dict) < MAX_PROC and not WAIT_FOR_DONE:
                     block = None
                     try:
-                        block = cmd_q.get(False)
+                        block = cmd_q.get(timeout=1)
                     except:
                         pass
 
@@ -325,6 +343,7 @@ class ChitinDaemon(object):
         finally:
             cmd_q.close()
             output_q.close()
+            post_q.close()
 
     @staticmethod
     def run_command(block, output_q):
@@ -359,7 +378,7 @@ class ChitinDaemon(object):
 
 class Chitin(object):
 
-    def __init__(self, MAX_PROC=32, SHELL_MODE=False):
+    def __init__(self, MAX_PROC=8, RES_PROC=2, SHELL_MODE=False):
         self.variables = {}
         self.meta = {}
 
@@ -370,6 +389,7 @@ class Chitin(object):
 
         self.cmd_q = Queue()
         self.out_q = Queue()
+        self.post_q = Queue()
         self.result_q = Queue()
 
         self.MAX_RESULTS = 10
@@ -379,7 +399,7 @@ class Chitin(object):
         self.show_stderr=False
 
         self.daemon = Process(target=ChitinDaemon.orchestrate,
-            args=(self.cmd_q, self.out_q, self.result_q, MAX_PROC, SHELL_MODE))
+            args=(self.cmd_q, self.out_q, self.post_q, self.result_q, MAX_PROC, RES_PROC, SHELL_MODE))
         self.daemon.start()
 
     def queue_command(self, cmd_uuid, group_id, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, blocked_by, self_flags):
