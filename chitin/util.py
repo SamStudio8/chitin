@@ -7,6 +7,7 @@ import time
 import warnings
 
 from datetime import datetime
+from PIL import Image, ImageDraw, ImageFont
 
 import record
 from cmd import attempt_parse_type, attempt_integrity_type
@@ -415,3 +416,30 @@ def copy_experiment_archive(exp_uuid, hostname, ssh_config_path=None, dest=None,
     print("".join(stdout.readlines()))
     ssh.close()
 
+
+#TODO(samstudio8) Find a non-garbage way of finding a nice default truetype font
+def watermark_experiment_image(exp_uuid, image_path, font_path="/usr/share/fonts/dejavu/DejaVuSansMono-Bold.ttf", name=None):
+    exp = record.Experiment.query.get(exp_uuid)
+    if not exp or not os.path.exists(exp.get_path()):
+        print("[WARN] Could not create watermarked experiment image.")
+        return
+
+    font = ImageFont.truetype(font_path, 36)
+    img = Image.open(image_path)
+    width, height = img.size
+
+    # Create a new image with some space at the bottom for metadata
+    # color=(0,0,0) somewhat assumes RGB so might implode
+    new_img = Image.new(img.mode, (width, height+48), color=(0,0,0))
+    new_img.paste(img, (0,0))
+
+    # Draw the UUID onto the image
+    draw = ImageDraw.Draw(new_img)
+    t_msg = exp_uuid
+    msg_w, msg_h = draw.textsize(t_msg, font=font)
+    draw.text(((width-msg_w)/2, height), t_msg, font=font)
+
+    # Save the image
+    if not name:
+        name = datetime.now().strftime("%Y-%m-%d_%H:%M:%S") + ".png"
+    new_img.save(os.path.join(exp.get_path(), name))
