@@ -207,7 +207,7 @@ class ChitinDaemon(object):
         watched_dirs = block["cmd_block"]["wd"]
         watched_files = block["cmd_block"]["wf"]
 
-        if return_code > 0:
+        if return_code != 0:
             # Should probably still check tokens and such...
             print("[WARN] Command %s exited with non-zero code." % cmd_str)
             block.update({"post": True, "success": False})
@@ -403,6 +403,7 @@ class Chitin(object):
         self.daemon.start()
 
     def queue_command(self, cmd_uuid, group_id, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, blocked_by, self_flags):
+
         self.cmd_q.put({
             "uuid": cmd_uuid,
             "blocked_by_uuid": blocked_by,
