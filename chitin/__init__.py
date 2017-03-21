@@ -490,8 +490,74 @@ class Chitin(object):
                  "show_stderr": self.show_stderr,
         })
 
+    def parse_script2(self, path, param_d):
+        def check_line(line):
+            if len(line.strip()) < 2:
+                return False
+            if line[0] == '#' and not line[1] == '@':
+                return False
+            return True
+        script_lines = [l.strip() for l in open(path).readlines() if check_line(l)]
+
+        # Split the blocks
+        blocks = []
+        current_block = []
+        in_block = False
+        input_map = {}
+        input_meta = {}
+
+        for line in script_lines:
+            if line.startswith("#@CHITIN_START_BLOCK"):
+                if len(current_block) > 0:
+                    blocks.append(current_block)
+                    current_block = []
+                else:
+                    in_block = True
+
+            elif line.startswith("#@CHITIN_END_BLOCK"):
+                if len(current_block) > 0:
+                    blocks.append(current_block)
+                    current_block = []
+                in_block = False
+
+            elif line.startswith("#@CHITIN_INPUT"):
+                # Map the parameter name (defined in the script) to its dollar number
+                # We will replace all $N with the value from param_d with the matching key
+                v_fields = line.split(" ")
+                input_map[v_fields[2]] = int(v_fields[1])
+
+            elif line.startswith("#@CHITIN_META"):
+                v_fields = line.split(" ")
+                input_meta[v_fields[1]] = v_fields[2]
+
+            else:
+                if in_block:
+                    current_block.append(line)
+                else:
+                    # Not currently in a block, so just make a new block with the current line
+                    blocks.append([line])
+
+        meta = {"script": {"path": path}}
+        fixed_blocks = []
+        for b in blocks:
+            BLOCK_COMMAND = "; ".join(b)
+
+            # Blindly replace variables using the parameter dictionary
+            for param_name, param_value in enumerate(param_d):
+                # Look up which dollar number to replace in the bash script
+                BLOCK_COMMAND.replace("$" + input_map[param_name], str(param_value))
+                meta["script"][param_name] = param_value
+            fixed_blocks.append(BLOCK_COMMAND)
+
+        meta["script"].update(input_meta)
+
+        self.meta.update(meta)
+        return fixed_blocks
 
     def parse_script(self, path, *tokens):
+        print("[DPRC] parse_script is deprecated, use parse_script2 instead.")
+        print("       parse_script2 accepts a dictionary of named parameters")
+        print("       parse_script will wrap parse_script2 eventually without further notice")
         def check_line(line):
             if len(line.strip()) < 2:
                 return False
