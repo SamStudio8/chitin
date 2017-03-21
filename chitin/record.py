@@ -20,6 +20,7 @@ db = SQLAlchemy(app)
 #    def __init__(self, path):
 #        self.uuid = str(uuid.uuid4())
 
+#TODO Replace experiment
 class Experiment(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
     base_path = db.Column(db.String(512))
@@ -35,11 +36,11 @@ class Experiment(db.Model):
     def get_path(self):
         return os.path.join(self.base_path, self.uuid)
 
-class Run(db.Model):
+class Job(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
 
     exp_id = db.Column(db.Integer, db.ForeignKey('experiment.uuid'))
-    exp = db.relationship('Experiment', backref=db.backref('runs', lazy='dynamic'))
+    exp = db.relationship('Experiment', backref=db.backref('jobs', lazy='dynamic'))
 
     def __init__(self, exp):
         self.uuid = str(uuid.uuid4())
@@ -48,110 +49,123 @@ class Run(db.Model):
     def get_path(self):
         return os.path.join(self.exp.get_path(), self.uuid)
 
-    def get_event_count(self):
+    def get_command_count(self):
         count = 0
-        for g in self.groups:
-            count += g.events.count()
+        for g in self.blocks:
+            count += g.commands.count()
         return count
 
-class EventGroup(db.Model):
+class CommandBlock(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
-    run_uuid = db.Column(db.Integer, db.ForeignKey('run.uuid'))
-    run = db.relationship('Run', backref=db.backref('groups', lazy='dynamic'))
+    job_uuid = db.Column(db.Integer, db.ForeignKey('job.uuid'))
+    job = db.relationship('Job', backref=db.backref('blocks', lazy='dynamic'))
 
-    def __init__(self, run=None):
-        if run is not None:
-            self.run = run
+    def __init__(self, job_uuid=None):
+        if job_uuid is not None:
+            self.job = job_uuid
 
-class RunMetadatum(db.Model):
+class ExperimentParameter(db.Model):
+    #TODO Future: Type, description?
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(40))
+    order = db.Column(db.Integer)
+
+    exp_uuid = db.Column(db.Integer, db.ForeignKey('experiment.uuid'))
+    exp = db.relationship('Experiment', backref=db.backref('params', lazy='dynamic'))
+
+    def __init__(self, exp, key, order):
+        self.exp = exp
+        self.key = key
+        self.order = order
+
+class JobMeta(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+
+    exp_param_id = db.Column(db.Integer, db.ForeignKey('experiment_parameter.id'))
+    exp_param = db.relationship('ExperimentParameter')
+
+    job_uuid = db.Column(db.Integer, db.ForeignKey('job.uuid'))
+    job = db.relationship('Job', backref=db.backref('job_params', lazy='dynamic'))
+
     value = db.Column(db.String(40))
 
-    run_uuid = db.Column(db.Integer, db.ForeignKey('run.uuid'))
-    run = db.relationship('Run', backref=db.backref('rmeta', lazy='dynamic'))
-
-    def __init__(self, run, key, value):
-        self.run = run
-        self.key = key
+    def __init__(self, job_id, exp_param_id, value):
+        self.job = job_id
+        self.exp_param = exp_param_id
         self.value = str(value)
 
-class Item(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    path = db.Column(db.String(512))
+class Resource(db.Model):
+    uuid = db.Column(db.String(40), primary_key=True)
+    current_path = db.Column(db.String(512))
+    current_hash = db.Column(db.String(64))
 
-    def __init__(self, path):
-        self.path = os.path.abspath(path)
+    def __init__(self, path, rhash):
+        self.uuid = str(uuid.uuid4())
+        self.current_path = path
+        self.current_hash = rhash
 
-    def get_last_digest(self):
-        try:
-            return self.events.all()[-1].hash
-        except IndexError:
-            return None
+    @property
+    def hash_friends(self):
+        return Resource.query.filter(Resource.current_hash == self.current_hash)
 
-#todo gross
-class Metadatum(db.Model):
+    @property
+    def last_command(self):
+        return self.commands.filter(ResourceCommand.status != 'U')[-1]
+
+class CommandMeta(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     category = db.Column(db.String(40))
     key = db.Column(db.String(40))
     value = db.Column(db.String(40))
 
-    event_uuid = db.Column(db.Integer, db.ForeignKey('event.uuid'))
-    event = db.relationship('Event', backref=db.backref('meta', lazy='dynamic'))
+    command_uuid = db.Column(db.Integer, db.ForeignKey('command.uuid'))
+    command = db.relationship('Command', backref=db.backref('meta', lazy='dynamic'))
 
-    def __init__(self, event_uuid, category, key, value):
-        self.event = event_uuid
+    def __init__(self, command_uuid, category, key, value):
+        self.command = command_uuid
         self.category = category
         self.key = key
         self.value = str(value)
 
-class Event(db.Model):
+class Command(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
     cmd = db.Column(db.String(512))
+    cmd_uuid_str = db.Column(db.String(512))
     timestamp = db.Column(db.DateTime)
     user = db.Column(db.String(40))
 
-    group_id = db.Column(db.Integer, db.ForeignKey('event_group.id'))
-    group = db.relationship('EventGroup', backref=db.backref('events', lazy='dynamic'))
+    block_id = db.Column(db.Integer, db.ForeignKey('command_block.id'))
+    block = db.relationship('CommandBlock', backref=db.backref('commands', lazy='dynamic'))
 
-    def __init__(self, cmd_str, event_uuid, group=None):
+    def __init__(self, cmd_str, cmd_block):
+        self.uuid = str(uuid.uuid4())
         self.cmd = cmd_str
         self.user = getpass.getuser()
         self.timestamp = datetime.datetime.now()
-        self.group = group
+        self.block = cmd_block
 
-        if not event_uuid:
-            event_uuid = str(uuid.uuid4())
-        self.uuid = event_uuid
+class ResourceCommand(db.Model):
+    uuid = db.Column(db.String(40), primary_key=True)
 
+    resource_id = db.Column(db.Integer, db.ForeignKey('resource.uuid'))
+    resource = db.relationship('Resource', backref=db.backref('commands', lazy='dynamic'))
 
-class ItemEvent(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-
-    item_id = db.Column(db.Integer, db.ForeignKey('item.id'))
-    item = db.relationship('Item', backref=db.backref('events', lazy='dynamic'))
-
-    event_id = db.Column(db.Integer, db.ForeignKey('event.uuid'))
-    event = db.relationship('Event', backref=db.backref('items', lazy='dynamic'))
+    command_id = db.Column(db.Integer, db.ForeignKey('command.uuid'))
+    command = db.relationship('Command', backref=db.backref('resources', lazy='dynamic'))
 
     hash = db.Column(db.String(64))
-    result_type = db.Column(db.String(1))
 
-    def __init__(self, item, event, result_type):
-        self.item = item
-        self.event = event
-        self.result_type = result_type
+    status = db.Column(db.String(1))
 
-        abspath = item.path
-        if os.path.isfile(abspath):
-            h = util.hashfile(abspath)
-        elif os.path.isdir(abspath):
-            h = util.hashfiles([os.path.join(abspath,f) for f in os.listdir(abspath) if os.path.isfile(os.path.join(abspath,f))])
-        else:
-            #???
-            h = 0
-        self.hash = h
+    def __init__(self, resource, cmd, status):
+        self.uuid = str(uuid.uuid4())
+        self.resource = resource
+        self.command = cmd
+        self.status = status
+
+        abspath = resource.current_path
+        self.hash = util.hashfile(abspath)
 
 db.create_all()
 

@@ -59,33 +59,33 @@ def history(file_path):
         else:
             print("No such path.")
     else:
-        print f.path
+        print f.current_path
         event_sets = {
-            "actions": f.events.filter(record.ItemEvent.result_type!='U'),
-            "usage": f.events.filter(record.ItemEvent.result_type=='U')
+            "actions": f.commands.filter(record.ResourceCommand.status != 'U'),
+            "usage": f.commands.filter(record.ResourceCommand.status == 'U')
         }
 
         for e_set in ["actions", "usage"]:
             print e_set.upper()
             for j in event_sets[e_set]:
                 print "{}\t{}\t{}\t{}\t{}".format(
-                    j.event.timestamp.strftime("%c"),
-                    j.event.user,
+                    j.command.timestamp.strftime("%c"),
+                    j.command.user,
                     j.hash,
-                    j.result_type,
-                    j.event.cmd,
+                    j.status,
+                    j.command.cmd,
                 )
-                for m in j.event.meta.all():
+                for m in j.command.meta.all():
                     print "{}{}\t{}\t{}".format(
                         " " * 80,
                         m.category,
                         m.key,
                         m.value
                     )
-                for m in j.event.items.all():
+                for m in j.command.resources.all():
                     print "{}{}\t{}".format(
                         " " * 80,
-                        m.item.path,
+                        m.resource.current_path,
                         m.hash,
                     )
             print ""
@@ -234,24 +234,26 @@ class ChitinDaemon(object):
         meta["run"] = run_meta
 
         # Look for changes
-        status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
+        #TODO This is gross
+        status = util.check_status_set2(watched_dirs | watched_files | new_files | new_dirs)
         if status["codes"]["U"] != sum(status["codes"].values()):
-            print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
             print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
-            for path, status_code in status["dirs"].items() + status["files"].items():
+            for path, status_code in status["files"].items():
                 usage = False
                 if status_code == "U":
                     usage = True
                     if path not in fields:
                         continue
-                util.add_file_record(path, cmd_str, status=status_code, meta=meta, uuid=cmd_uuid, group_id=event_group_id)
+                #util.add_file_record2(path, cmd_str, status=status_code, meta=meta, uuid=cmd_uuid, group_id=event_group_id)
+                util.add_file_record2(path, cmd_str, cmd_uuid=cmd_uuid, status=status_code)
 
         # Terrible way to run filetype handlers
-        util.check_integrity_set(watched_files | new_files, file_tokens=token_p["files"], skip_check=block["cmd_block"]["skip_integrity"])
+        util.check_integrity_set2(watched_files | new_files, skip_check=block["cmd_block"]["skip_integrity"])
 
-        #message = "%s (%s): %d files changed, %d created, %d deleted." % (
-        #        cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
-        #)
+        # Pretty hacky way to get the UUID cmd str
+        token_p = util.parse_tokens(fields, env_vars, ignore_parents=block["cmd_block"]["ignore_parents"], insert_uuids=True)
+        uuid_cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
+        util.add_uuid_cmd_str(cmd_uuid, uuid_cmd_str)
 
         block.update({"post": True, "success": True})
         post_q.put(block)
@@ -348,7 +350,7 @@ class ChitinDaemon(object):
     @staticmethod
     def run_command(block, output_q):
         # Check whether files have been altered outside of environment before proceeding
-        for failed in util.check_integrity_set(block["wd"] | block["wf"], file_tokens=block["tokens"]["files"], skip_check=block["skip_integrity"]):
+        for failed in util.check_integrity_set2(block["wd"] | block["wf"], skip_check=block["skip_integrity"]):
                 print("[WARN] '%s' has been modified outside of lab book." % failed)
 
         # Check whether any named files have results (usages) attached to files that
@@ -454,19 +456,19 @@ class Chitin(object):
                     print("Likely incorrect usage of '%s'" % special_cmd)
         return SKIP, command_set
 
-    def super_handle(self, command_set, dry=False, run=None):
-        self.execute(command_set, dry=dry, run=run)
+    def super_handle(self, command_set, run=None):
+        self.execute(command_set, run=run)
 
-    def execute(self, command_set, dry=False, run=None):
-        event_group_id = util.add_event_group(run)
+    def execute(self, command_set, run=None):
+        event_group = util.add_command_block(run)
         last_uuid = None
         for command_i, command in enumerate(command_set):
-            cmd_uuid = str(uuid.uuid4())
-            self.handle_command(cmd_uuid, command.split(" "), self.variables, self.meta, dry, group=event_group_id, blocked_by=last_uuid)
-            last_uuid = cmd_uuid
+            cmd = util.add_command(command, event_group)
+            self.handle_command(cmd.uuid, command.split(" "), self.variables, self.meta, group=event_group.id, blocked_by=last_uuid)
+            last_uuid = cmd.uuid
 
-    def handle_command(self, cmd_uuid, fields, env_variables, input_meta, dry=False, group=None, blocked_by=None):
-
+    #TODO FUTURE Drop cmd_uuid from here
+    def handle_command(self, cmd_uuid, fields, env_variables, input_meta, group=None, blocked_by=None):
         # Determine files and folders on which to watch for changes
         token_p = util.parse_tokens(fields, env_variables, ignore_parents=self.ignore_parents)
         if not self.ignore_dot:
@@ -476,12 +478,6 @@ class Chitin(object):
 
         # Collapse new command tokens to cmd_str and print cmd with uuid to user (before warnings)
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
-
-        if dry:
-            return {
-                "message": "There was no effect.",
-                "cmd_str": cmd_str
-            }
 
         ### Queue for Execution
         self.queue_command(cmd_uuid, group, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p, blocked_by, {
@@ -647,6 +643,9 @@ def shell():
     print(WELCOME)
     message = VERSION
 
+    exp = util.register_experiment(os.path.abspath('.'))
+    run = util.register_job(exp.uuid, meta={})
+
     def get_bottom_toolbar_tokens(cli):
         return [(Token.Toolbar, ' '+message)]
 
@@ -658,7 +657,7 @@ def shell():
 
     # Check whether files in and around the current directory have been changed...
     print("Performing opening integrity check...")
-    for failed in util.check_integrity_set(set(".")):
+    for failed in util.check_integrity_set2(set(".")):
         print("[WARN] '%s' has been modified outside of lab book." % failed)
     try:
         skip = False
@@ -699,7 +698,7 @@ def shell():
             if len(special_command_set) > 0:
                 command_set = special_command_set
 
-            c.execute(command_set)
+            c.execute(command_set, run=run.uuid)
 
     except EOFError:
         print("Bye!")
