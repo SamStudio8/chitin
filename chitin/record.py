@@ -36,6 +36,18 @@ class Experiment(db.Model):
     def get_path(self):
         return os.path.join(self.base_path, self.uuid)
 
+    def get_fixed_params(self):
+        return [p for p in self.params.all() if p.default_value != None]
+
+    def get_param_keys(self):
+        return [p for p in self.params.all() if p.default_value == None]
+
+    def make_params(self):
+        params = {}
+        for p in self.params.all():
+            params[p.key] = p.default_value
+        return params
+
 class Job(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
 
@@ -48,6 +60,9 @@ class Job(db.Model):
 
     def get_path(self):
         return os.path.join(self.exp.get_path(), self.uuid)
+
+    def get_params(self):
+        return [p for p in self.job_params.all() if p.value != p.exp_param.default_value]
 
     def get_command_count(self):
         count = 0
@@ -69,15 +84,17 @@ class ExperimentParameter(db.Model):
     #TODO Future: Type, description?
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(40))
-    order = db.Column(db.Integer)
+    default_value = db.Column(db.String(128))
+    #order = db.Column(db.Integer)
 
     exp_uuid = db.Column(db.Integer, db.ForeignKey('experiment.uuid'))
     exp = db.relationship('Experiment', backref=db.backref('params', lazy='dynamic'))
 
-    def __init__(self, exp, key, order):
+    def __init__(self, exp, key, value):
         self.exp = exp
         self.key = key
-        self.order = order
+        self.default_value = value
+        #self.order = order
 
 class JobMeta(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -88,11 +105,11 @@ class JobMeta(db.Model):
     job_uuid = db.Column(db.Integer, db.ForeignKey('job.uuid'))
     job = db.relationship('Job', backref=db.backref('job_params', lazy='dynamic'))
 
-    value = db.Column(db.String(40))
+    value = db.Column(db.String(128))
 
-    def __init__(self, job_id, exp_param_id, value):
-        self.job = job_id
-        self.exp_param = exp_param_id
+    def __init__(self, job, exp_param, value):
+        self.job = job
+        self.exp_param = exp_param
         self.value = str(value)
 
 class Resource(db.Model):

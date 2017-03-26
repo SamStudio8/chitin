@@ -366,65 +366,54 @@ def check_status_path_set(path_set):
 
 
 ################################################################################
-def register_experiment(path, create_dir=False):
+def register_experiment(path, create_dir=False, params=None):
     exp = record.Experiment(path)
     record.db.session.add(exp)
     record.db.session.commit()
+
+    if params:
+        for i, p in enumerate(params):
+            #p = record.ExperimentParameter(self, p, params[p], i)
+            p = record.ExperimentParameter(exp, p, params[p])
+            record.db.session.add(p)
+        record.db.session.commit()
 
     if create_dir:
         try:
             os.mkdir(exp.get_path())
         except:
             #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
-            print("[WARN] Encountered trouble creating %s" % path)
+            print("[WARN] Encountered trouble creating %s" % exp.get_path())
     return exp
 
-def register_job(exp_uuid, create_dir=False, meta=None):
+def register_job(exp_uuid, create_dir=False):
     exp = None
     try:
         exp = record.Experiment.query.filter(record.Experiment.uuid==str(exp_uuid))[0]
     except IndexError as e:
         pass
 
+    job_params = exp.make_params()
+
     job = record.Job(exp)
     record.db.session.add(job)
 
-    if meta:
-        for key in meta:
-            datum = record.JobMeta(run, key, meta[key])
-            record.db.session.add(datum)
-    record.db.session.commit()
-
-    #if create_dir:
-    #    try:
-    #        os.mkdir(run.get_path())
-    #    except:
-    #        #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
-    #        print("[WARN] Encountered trouble creating %s" % path)
-    return job
-
-def register_run(exp_uuid, create_dir=False, meta=None):
-    try:
-        exp = record.Experiment.query.filter(record.Experiment.uuid==str(exp_uuid))[0]
-    except IndexError as e:
-        return None
-
-    run = record.Run(exp)
-    record.db.session.add(run)
-
-    if meta:
-        for key in meta:
-            datum = record.RunMetadatum(run, key, meta[key])
-            record.db.session.add(datum)
-    record.db.session.commit()
-
+    job_path = "" # euch, this is going to cause trouble
     if create_dir:
         try:
-            os.mkdir(run.get_path())
+            os.mkdir(job.get_path())
+            job_path = job.get_path()
         except:
             #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
-            print("[WARN] Encountered trouble creating %s" % path)
-    return run
+            print("[WARN] Encountered trouble creating %s" % job.get_path())
+
+    job_params["exp_uuid"] = exp.uuid
+    job_params["job_uuid"] = job.uuid
+    job_params["job_dir"] = job_path
+    return job, job_params
+
+def register_run(exp_uuid, create_dir=False, meta=None):
+    return register_job(exp_uuid, create_dir=create_dir, meta=meta)
 
 def archive_experiment(exp_uuid, tar_path=None, manifest=True, new_root=None):
     import tarfile

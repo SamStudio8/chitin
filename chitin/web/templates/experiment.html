@@ -5,12 +5,31 @@
     <thead>
     </thead>
     <tbody>
+    {% for p in exp.get_fixed_params() %}
+    <tr>
+        <td><b>{{ p.key }}</b></td>
+        <td>{{ p.default_value }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+<table class="table">
+    <thead>
+        <tr>
+            <th>UUID</th>
+            <th>#Cmd</th>
+            {% for p in exp.get_param_keys() %}
+                <th>{{ p.key }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
     {% for job in exp.jobs %}
     <tr>
         <td style="font-family:monospace;"><b><a href="{{ url_for('run_detail', run=job.uuid) }}">{{ job.uuid }}</a></b></td>
         <td>{{ job.get_command_count() }} ({{ job.blocks.count() }})</td>
-        {% for meta in job.meta %}
-            <td>{{ meta.value }}</td>
+        {% for p in job.get_params() %}
+            <td>{{ p.value }}</td>
         {% endfor %}
     </tr>
     {% endfor %}

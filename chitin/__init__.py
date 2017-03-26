@@ -457,6 +457,26 @@ class Chitin(object):
     def super_handle(self, command_set, run=None):
         self.execute(command_set, run=run)
 
+
+    def exe_script(self, script, job, job_params):
+        for p in job_params:
+            if not job_params[p]:
+                print("[FAIL] Unset experiment parameter '%s'. Job NOT submitted." % p)
+                return None
+
+        # TODO Should probably prevent overriding of defaults?
+        for key in job_params:
+            try:
+                p = record.ExperimentParameter.query.filter(record.ExperimentParameter.key==key)[0]
+            except IndexError:
+                continue
+            jm = record.JobMeta(job, p, job_params[key])
+            record.db.session.add(jm)
+        record.db.session.commit()
+
+        commands = self.parse_script2(script, job_params)
+        self.execute(commands, run=job.uuid) #could actually get the UUID from the run_params["job_uuid"]
+
     def execute(self, command_set, run=None):
         event_group = util.add_command_block(run)
         last_uuid = None
@@ -521,7 +541,10 @@ class Chitin(object):
 
             elif line.startswith("#@CHITIN_META"):
                 v_fields = line.split(" ")
-                input_meta[v_fields[1]] = v_fields[2]
+                try:
+                    input_meta[v_fields[1]] = v_fields[2]
+                except IndexError:
+                    pass
 
             else:
                 if in_block:
@@ -536,10 +559,13 @@ class Chitin(object):
             BLOCK_COMMAND = "; ".join(b)
 
             # Blindly replace variables using the parameter dictionary
-            for param_name, param_value in enumerate(param_d):
-                # Look up which dollar number to replace in the bash script
-                BLOCK_COMMAND.replace("$" + input_map[param_name], str(param_value))
-                meta["script"][param_name] = param_value
+            for param_name, param_value in param_d.items():
+                try:
+                    # Look up which dollar number to replace in the bash script
+                    BLOCK_COMMAND = BLOCK_COMMAND.replace("$" + str(input_map[param_name]), str(param_value))
+                    meta["script"][param_name] = param_value
+                except KeyError:
+                    pass
             fixed_blocks.append(BLOCK_COMMAND)
 
         meta["script"].update(input_meta)
