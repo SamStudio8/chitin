@@ -184,5 +184,23 @@ class ResourceCommand(db.Model):
         abspath = resource.current_path
         self.hash = util.hashfile(abspath)
 
+class CommandText(db.Model):
+    uuid = db.Column(db.String(40), primary_key=True)
+
+    name = db.Column(db.String(40))
+    num_lines = db.Column(db.Integer())
+
+    command_uuid = db.Column(db.Integer, db.ForeignKey('command.uuid'))
+    command = db.relationship('Command', backref=db.backref('texts', lazy='dynamic'))
+
+    text = db.Column(db.Text())
+
+    def __init__(self, cmd, name, text):
+        self.uuid = str(uuid.uuid4())
+        self.command = cmd
+        self.name = name
+        self.text = text
+        self.num_lines = text.count("\n")
+
 db.create_all()
 

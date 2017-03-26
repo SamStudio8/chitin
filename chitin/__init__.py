@@ -211,6 +211,8 @@ class ChitinDaemon(object):
             # Should probably still check tokens and such...
             print("[WARN] Command %s exited with non-zero code." % cmd_str)
             block.update({"post": True, "success": False})
+            util.add_command_text(cmd_uuid, "stdout", stdout)
+            util.add_command_text(cmd_uuid, "stderr", stderr)
             post_q.put(block)
             return
 

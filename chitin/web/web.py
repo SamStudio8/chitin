@@ -1,4 +1,4 @@
-from flask import render_template, Markup
+from flask import render_template, Markup, Response
 
 from chitin import record
 
@@ -15,6 +15,11 @@ def experiment_detail(experiment):
 def run_detail(run):
     run = record.Job.query.get_or_404(run)
     return render_template('run.html', run=run)
+
+@record.app.route('/text/<text>')
+def text_detail(text):
+    text = record.CommandText.query.get_or_404(text)
+    return Response(text.text, mimetype="text/plain")
 
 @record.app.route('/resource/<resource>')
 def resource_detail(resource):

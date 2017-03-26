@@ -1,11 +1,17 @@
 {% include 'header.html' %}
-<h3>{{ run.uuid }}</h3>
+<b>Job#</b>
+<h3 style="margin-top:0; padding-top:0;">{{ run.uuid }}</h3>
+<hr>
 {% for block in run.blocks %}
+    <div class="command-block">
     {% for command in block.commands %}
-        <div class="row">
-            <div class="well col-md-6">{{ command.cmd }}</div>
-            <div class="well col-md-6">{{ command.cmd_uuid_str | chitin | safe }}</div>
-        </div>
+        <div class="command">
+        <div>{{ command.cmd }}</div>
+        <ul>
+        {% for text in command.texts %}
+            <li><a href="{{ url_for('text_detail', text=text.uuid) }}">{{ text.name }}</a></li>
+        {% endfor %}
+        </ul>
         <table class="table">
             <thead>
             </thead>
@@ -19,8 +25,9 @@
             {% endfor %}
             </tbody>
         </table>
-        <hr>
+        </div>
     {% endfor %}
+    </div>
 {% endfor %}
 {% include 'footer.html' %}
 
