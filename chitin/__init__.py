@@ -672,7 +672,7 @@ def shell():
     message = VERSION
 
     exp = util.register_experiment(os.path.abspath('.'))
-    run = util.register_job(exp.uuid, meta={})
+    run, params = util.register_job(exp.uuid)
 
     def get_bottom_toolbar_tokens(cli):
         return [(Token.Toolbar, ' '+message)]

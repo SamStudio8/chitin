@@ -202,6 +202,8 @@ class ResourceCommand(db.Model):
         abspath = resource.current_path
         self.hash = util.hashfile(abspath)
 
+        self.resource.current_hash = self.hash
+
     def check_hash(self):
         return self.resource.current_hash == self.hash
 

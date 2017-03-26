@@ -435,7 +435,10 @@ def register_job(exp_uuid, create_dir=False):
     return job, job_params
 
 def register_run(exp_uuid, create_dir=False, meta=None):
-    return register_job(exp_uuid, create_dir=create_dir, meta=meta)
+    print("[WARN] register_run is deprecated, use register_job instead")
+    print("       Note that you no longer pass parameters to register_job,")
+    print("       register_run now returns a dict for you to fill in")
+    return register_job(exp_uuid, create_dir=create_dir)
 
 def archive_experiment(exp_uuid, tar_path=None, manifest=True, new_root=None):
     import tarfile
