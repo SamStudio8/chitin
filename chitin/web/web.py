@@ -1,6 +1,6 @@
 from flask import render_template, Markup, Response
 
-from chitin import record
+from chitin import record, util
 
 @record.app.route('/')
 def experiment_list():
@@ -33,6 +33,10 @@ def chitin_filter(s):
         for i, f in enumerate(fields):
             if f.startswith("chitin://"):
                 fields[i] = Markup("<a href='/resource/" + f.replace("chitin://", "") +"'>" + f + "</a>")
+            else:
+                resource = util.get_resource_by_path(f)
+                if resource:
+                    fields[i] = Markup("<a href='/resource/" + resource.uuid  +"'>" + f + "</a>")
         return " ".join(fields)
     except:
         return s

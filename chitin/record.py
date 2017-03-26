@@ -58,6 +58,17 @@ class Job(db.Model):
         self.uuid = str(uuid.uuid4())
         self.exp = exp
 
+    #TODO Grim
+    @property
+    def return_code(self):
+        for b in self.blocks:
+            for c in b.commands:
+                if c.return_code == -1:
+                    return -1
+                elif c.return_code != 0:
+                    return c.return_code
+        return 0
+
     def get_path(self):
         return os.path.join(self.exp.get_path(), self.uuid)
 
@@ -82,6 +93,7 @@ class CommandBlock(db.Model):
 
 class ExperimentParameter(db.Model):
     #TODO Future: Type, description?
+    #TODO Could have a ponteitla Resource pointer here...
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(40))
     default_value = db.Column(db.String(128))
@@ -124,11 +136,14 @@ class Resource(db.Model):
 
     @property
     def hash_friends(self):
-        return Resource.query.filter(Resource.current_hash == self.current_hash)
+        return Resource.query.filter(Resource.current_hash == self.current_hash, Resource.uuid != self.uuid)
 
     @property
     def last_command(self):
-        return self.commands.filter(ResourceCommand.status != 'U')[-1]
+        try:
+            return self.commands.filter(ResourceCommand.status != 'U')[-1]
+        except:
+            return None
 
 class CommandMeta(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -155,12 +170,15 @@ class Command(db.Model):
     block_id = db.Column(db.Integer, db.ForeignKey('command_block.id'))
     block = db.relationship('CommandBlock', backref=db.backref('commands', lazy='dynamic'))
 
+    return_code = db.Column(db.Integer)
+
     def __init__(self, cmd_str, cmd_block):
         self.uuid = str(uuid.uuid4())
         self.cmd = cmd_str
         self.user = getpass.getuser()
         self.timestamp = datetime.datetime.now()
         self.block = cmd_block
+        self.return_code = -1
 
 class ResourceCommand(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
@@ -184,11 +202,14 @@ class ResourceCommand(db.Model):
         abspath = resource.current_path
         self.hash = util.hashfile(abspath)
 
+    def check_hash(self):
+        return self.resource.current_hash == self.hash
+
 class CommandText(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
 
     name = db.Column(db.String(40))
-    num_lines = db.Column(db.Integer())
+    num_lines = db.Column(db.Integer)
 
     command_uuid = db.Column(db.Integer, db.ForeignKey('command.uuid'))
     command = db.relationship('Command', backref=db.backref('texts', lazy='dynamic'))

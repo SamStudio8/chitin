@@ -46,9 +46,17 @@ def add_file_record2(path, cmd_str, status, cmd_uuid=None):
     if cmd_uuid:
         # There is always one, except for (?)
         cmd = get_command_by_uuid(cmd_uuid)
-        if cmd:
-            resource_command = record.ResourceCommand(resource, cmd, status)
-            record.db.session.add(resource_command)
+    else:
+        block = add_command_block(0)
+        record.db.session.add(block)
+        record.db.session.commit()
+        cmd = add_command(cmd_str, block)
+        record.db.session.add(cmd)
+        record.db.session.commit()
+
+    if cmd:
+        resource_command = record.ResourceCommand(resource, cmd, status)
+        record.db.session.add(resource_command)
 
     record.db.session.commit()
 
@@ -88,6 +96,11 @@ def add_command_text(cmd_uuid, key, text):
     cmd = get_command_by_uuid(cmd_uuid)
     ctxt = record.CommandText(cmd, key, text)
     record.db.session.add(ctxt)
+    record.db.session.commit()
+
+def set_command_return_code(cmd_uuid, return_code):
+    cmd = get_command_by_uuid(cmd_uuid)
+    cmd.return_code = return_code
     record.db.session.commit()
 
 ################################################################################
@@ -379,6 +392,7 @@ def register_experiment(path, create_dir=False, params=None):
     record.db.session.add(exp)
     record.db.session.commit()
 
+    #TODO Would be nice to check whether params[p] is a Resource?
     if params:
         for i, p in enumerate(params):
             #p = record.ExperimentParameter(self, p, params[p], i)

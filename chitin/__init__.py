@@ -293,6 +293,9 @@ class ChitinDaemon(object):
                     if block["cmd_block"]["blocked_by_uuid"]:
                         completed_uuid.remove(block["cmd_block"]["blocked_by_uuid"])
 
+                    # Any additional post command duties
+                    util.set_command_return_code(cmd_uuid, block["return_code"])
+
                 # Now try to check whether there's room to run some post-handles
                 if len(process_dict) < (MAX_PROC+RES_PROC):
                     block = None

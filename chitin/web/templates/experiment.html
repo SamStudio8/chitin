@@ -25,7 +25,14 @@
     </thead>
     <tbody>
     {% for job in exp.jobs %}
-    <tr>
+        {% if job.return_code == -1 %}
+            {% set bg = '#999999' %}
+        {% elif job.return_code == 0 %}
+            {% set bg = '#adebad' %}
+        {% else %}
+            {% set bg = '#ff9999' %}
+        {% endif %}
+        <tr class="side-lamp" style="border-left-color: {{ bg }};">
         <td style="font-family:monospace;"><b><a href="{{ url_for('run_detail', run=job.uuid) }}">{{ job.uuid }}</a></b></td>
         <td>{{ job.get_command_count() }} ({{ job.blocks.count() }})</td>
         {% for p in job.get_params() %}
