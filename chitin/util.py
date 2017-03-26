@@ -276,21 +276,12 @@ def parse_tokens(fields, env_vars, insert_uuids=False):
                 fields[field_i] = field_ + ';' # Update the command to use the full abspath
             else:
                 fields[field_i] = field_ # Update the command to use the full abspath
-
-            if not ignore_parents:
-                dirs_l.append(os.path.dirname(abspath))
         else:
-            #potential_dir = os.path.dirname(abspath)
-            #if os.path.exists(potential_dir) and not ignore_parents:
-            #    dirs_l.append(potential_dir)
             continue
 
         ### Files
         if os.path.isfile(abspath):
             file_l.append(abspath)
-
-            if not ignore_parents:
-                dirs_l.append(os.path.dirname(abspath))
 
         ### Dirs
         elif os.path.isdir(abspath):

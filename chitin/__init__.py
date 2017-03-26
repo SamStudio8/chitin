@@ -548,7 +548,7 @@ class Chitin(object):
         return fixed_blocks
 
     def parse_script(self, path, *tokens):
-        print("[DPRC] parse_script is deprecated, use parse_script2 instead.")
+        print("[WARN] parse_script is deprecated, use parse_script2 instead.")
         print("       parse_script2 accepts a dictionary of named parameters")
         print("       parse_script will wrap parse_script2 eventually without further notice")
         def check_line(line):
