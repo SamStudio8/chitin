@@ -219,7 +219,7 @@ class ChitinDaemon(object):
 
         # Update field tokens
         fields = cmd_str.split(" ")
-        token_p = util.parse_tokens(fields, env_vars, ignore_parents=block["cmd_block"]["ignore_parents"])
+        token_p = util.parse_tokens(fields, env_vars)
         new_dirs = token_p["dirs"] - watched_dirs
         new_files = token_p["files"] - watched_files
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
@@ -251,7 +251,7 @@ class ChitinDaemon(object):
         util.check_integrity_set2(watched_files | new_files, skip_check=block["cmd_block"]["skip_integrity"])
 
         # Pretty hacky way to get the UUID cmd str
-        token_p = util.parse_tokens(fields, env_vars, ignore_parents=block["cmd_block"]["ignore_parents"], insert_uuids=True)
+        token_p = util.parse_tokens(fields, env_vars, insert_uuids=True)
         uuid_cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
         util.add_uuid_cmd_str(cmd_uuid, uuid_cmd_str)
 
@@ -387,7 +387,6 @@ class Chitin(object):
         self.skip_integrity = False
         self.suppress = False
         self.ignore_dot = False
-        self.ignore_parents = False
 
         self.cmd_q = Queue()
         self.out_q = Queue()
@@ -417,7 +416,6 @@ class Chitin(object):
             "input_meta": input_meta,
             "tokens": tokens,
             "skip_integrity": self_flags["skip_integ"],
-            "ignore_parents": self_flags["ignore_parents"],
             "show_stderr": self_flags["show_stderr"],
         })
 
@@ -470,7 +468,7 @@ class Chitin(object):
     #TODO FUTURE Drop cmd_uuid from here
     def handle_command(self, cmd_uuid, fields, env_variables, input_meta, group=None, blocked_by=None):
         # Determine files and folders on which to watch for changes
-        token_p = util.parse_tokens(fields, env_variables, ignore_parents=self.ignore_parents)
+        token_p = util.parse_tokens(fields, env_variables)
         if not self.ignore_dot:
             token_p["dirs"].add(".")
         watched_dirs = token_p["dirs"]
@@ -482,7 +480,6 @@ class Chitin(object):
         ### Queue for Execution
         self.queue_command(cmd_uuid, group, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p, blocked_by, {
                  "skip_integ": self.skip_integrity,
-                 "ignore_parents": self.ignore_parents,
                  "show_stderr": self.show_stderr,
         })
 

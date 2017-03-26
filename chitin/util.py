@@ -244,7 +244,7 @@ def get_status(path, cmd_str=""):
     return (status, h, last_h)
 
 ###############################################################################
-def parse_tokens(fields, env_vars, ignore_parents=False, insert_uuids=False):
+def parse_tokens(fields, env_vars, insert_uuids=False):
     dirs_l = []
     file_l = []
     for field_i, field in enumerate(fields):
@@ -280,9 +280,9 @@ def parse_tokens(fields, env_vars, ignore_parents=False, insert_uuids=False):
             if not ignore_parents:
                 dirs_l.append(os.path.dirname(abspath))
         else:
-            potential_dir = os.path.dirname(abspath)
-            if os.path.exists(potential_dir) and not ignore_parents:
-                dirs_l.append(potential_dir)
+            #potential_dir = os.path.dirname(abspath)
+            #if os.path.exists(potential_dir) and not ignore_parents:
+            #    dirs_l.append(potential_dir)
             continue
 
         ### Files
