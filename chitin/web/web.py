@@ -4,7 +4,12 @@ from chitin import record, util
 
 @record.app.route('/')
 def experiment_list():
-    return render_template('experiments.html', experiments=record.Experiment.query.all())
+    return render_template('projects.html', projects=record.Project.query.order_by(record.Project.last_exp_ts.desc()))
+
+@record.app.route('/project/<project>')
+def project_detail(project):
+    project = record.Project.query.get_or_404(project)
+    return render_template('project.html', project=project)
 
 @record.app.route('/experiment/<experiment>')
 def experiment_detail(experiment):

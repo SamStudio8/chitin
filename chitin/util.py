@@ -401,8 +401,17 @@ def check_status_path_set(path_set):
 
 
 ################################################################################
-def register_experiment(path, create_dir=False, params=None, name=None):
-    exp = record.Experiment(path, name)
+def register_or_fetch_project(name):
+    try:
+        project = record.Project.query.filter(record.Project.name == name)[0]
+    except IndexError:
+        project = record.Project(name)
+        record.db.session.add(project)
+        record.db.session.commit()
+    return project
+
+def register_experiment(path, project, create_dir=False, params=None, name=None):
+    exp = record.Experiment(path, project, name=name)
     record.db.session.add(exp)
     record.db.session.commit()
 

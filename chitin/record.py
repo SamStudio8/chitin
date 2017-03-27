@@ -20,19 +20,38 @@ db = SQLAlchemy(app)
 #    def __init__(self, path):
 #        self.uuid = str(uuid.uuid4())
 
+class Project(db.Model):
+    uuid = db.Column(db.String(40), primary_key=True)
+    name = db.Column(db.String(64)) # TODO Force unique names
+
+    last_exp_ts = db.Column(db.DateTime)
+
+    def __init__(self, name):
+        self.uuid = str(uuid.uuid4())
+        self.name = name
+        last_exp_ts = datetime.datetime.now()
+
+    def get_experiments(self):
+        return self.experiments.order_by(Experiment.timestamp.desc())
+
+
 #TODO Replace experiment
 class Experiment(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
     name = db.Column(db.String(64))
     base_path = db.Column(db.String(512))
 
-    #FUTURE(samstudio8) Experiments belong to books
-    #book_id = db.Column(db.Integer, db.ForeignKey('labbook.uuid'))
-    #book = db.relationship('Labbook', backref=db.backref('meta', lazy='dynamic'))
+    project_uuid = db.Column(db.Integer, db.ForeignKey('project.uuid'))
+    project = db.relationship('Project', backref=db.backref('experiments', lazy='dynamic'))
 
-    def __init__(self, path, name=None):
+    timestamp = db.Column(db.DateTime)
+
+    def __init__(self, path, project, name=None):
         self.uuid = str(uuid.uuid4())
         self.base_path = os.path.abspath(path)
+        self.project = project
+        self.timestamp = datetime.datetime.now()
+        self.project.last_exp_ts = self.timestamp
 
         if name:
             self.name = name
