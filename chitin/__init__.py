@@ -201,7 +201,6 @@ class ChitinDaemon(object):
         return_code = block["return_code"]
         cmd_str = block["cmd_block"]["cmd"]
         cmd_uuid = block["cmd_block"]["uuid"]
-        event_group_id = block["cmd_block"]["group"]
         input_meta = block["cmd_block"]["input_meta"]
 
         watched_dirs = block["cmd_block"]["wd"]
@@ -246,7 +245,7 @@ class ChitinDaemon(object):
                     usage = True
                     if path not in fields:
                         continue
-                #util.add_file_record2(path, cmd_str, status=status_code, meta=meta, uuid=cmd_uuid, group_id=event_group_id)
+                #util.add_file_record2(path, cmd_str, status=status_code, meta=meta, uuid=cmd_uuid)
                 util.add_file_record2(path, cmd_str, cmd_uuid=cmd_uuid, status=status_code)
 
         # Terrible way to run filetype handlers
@@ -408,12 +407,11 @@ class Chitin(object):
             args=(self.cmd_q, self.out_q, self.post_q, self.result_q, MAX_PROC, RES_PROC, SHELL_MODE))
         self.daemon.start()
 
-    def queue_command(self, cmd_uuid, group_id, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, blocked_by, self_flags):
+    def queue_command(self, cmd_uuid, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, blocked_by, self_flags):
 
         self.cmd_q.put({
             "uuid": cmd_uuid,
             "blocked_by_uuid": blocked_by,
-            "group": group_id,
             "cmd": cmd_str,
             "env_vars": env_vars,
             "wd": watch_dirs,
@@ -487,11 +485,11 @@ class Chitin(object):
         last_uuid = None
         for command_i, command in enumerate(command_set):
             cmd = util.add_command(command, event_group)
-            self.handle_command(cmd.uuid, command.split(" "), self.variables, self.meta, group=event_group.id, blocked_by=last_uuid)
+            self.handle_command(cmd.uuid, command.split(" "), self.variables, self.meta, blocked_by=last_uuid)
             last_uuid = cmd.uuid
 
     #TODO FUTURE Drop cmd_uuid from here
-    def handle_command(self, cmd_uuid, fields, env_variables, input_meta, group=None, blocked_by=None):
+    def handle_command(self, cmd_uuid, fields, env_variables, input_meta, blocked_by=None):
         # Determine files and folders on which to watch for changes
         token_p = util.parse_tokens(fields, env_variables)
         if not self.ignore_dot:
@@ -503,7 +501,7 @@ class Chitin(object):
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
         ### Queue for Execution
-        self.queue_command(cmd_uuid, group, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p, blocked_by, {
+        self.queue_command(cmd_uuid, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p, blocked_by, {
                  "skip_integ": self.skip_integrity,
                  "show_stderr": self.show_stderr,
         })
