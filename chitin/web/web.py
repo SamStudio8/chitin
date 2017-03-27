@@ -1,9 +1,9 @@
-from flask import render_template, Markup, Response
+from flask import render_template, Markup, Response, redirect, url_for, request, abort
 
 from chitin import record, util
 
 @record.app.route('/')
-def experiment_list():
+def project_list():
     return render_template('projects.html', projects=record.Project.query.order_by(record.Project.last_exp_ts.desc()))
 
 @record.app.route('/project/<project>')
@@ -31,6 +31,24 @@ def resource_detail(resource):
     resource = record.Resource.query.get_or_404(resource)
     return render_template('resource.html', resource=resource)
 
+@record.app.route('/search')
+def search():
+    query = request.args.get('search')
+
+    if record.Resource.query.get(query):
+        return redirect(url_for('resource_detail', resource=query))
+    elif record.Experiment.query.get(query):
+        return redirect(url_for('experiment_detail', experiment=query))
+    elif record.Job.query.get(query):
+        return redirect(url_for('run_detail', run=query))
+    elif record.Project.query.get(query):
+        return redirect(url_for('project_detail', project=query))
+    else:
+        #return redirect(url_for('project_list'))
+        abort(404)
+
+
+#todo url_for
 @record.app.template_filter('chitin')
 def chitin_filter(s):
     try:
