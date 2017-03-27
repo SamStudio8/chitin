@@ -29,7 +29,7 @@ class Project(db.Model):
     def __init__(self, name):
         self.uuid = str(uuid.uuid4())
         self.name = name
-        last_exp_ts = datetime.datetime.now()
+        self.last_exp_ts = datetime.datetime.now()
 
     def get_experiments(self):
         return self.experiments.order_by(Experiment.timestamp.desc())
