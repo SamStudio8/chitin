@@ -245,7 +245,6 @@ class ChitinDaemon(object):
                     usage = True
                     if path not in fields:
                         continue
-                #util.add_file_record2(path, cmd_str, status=status_code, meta=meta, uuid=cmd_uuid)
                 util.add_file_record2(path, cmd_str, cmd_uuid=cmd_uuid, status=status_code)
 
         # Terrible way to run filetype handlers
@@ -255,6 +254,7 @@ class ChitinDaemon(object):
         token_p = util.parse_tokens(fields, env_vars, insert_uuids=True)
         uuid_cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
         util.add_uuid_cmd_str(cmd_uuid, uuid_cmd_str)
+        util.add_command_meta(cmd_uuid, meta)
 
         block.update({"post": True, "success": True})
         post_q.put(block)
@@ -356,10 +356,6 @@ class ChitinDaemon(object):
         # Check whether files have been altered outside of environment before proceeding
         for failed in util.check_integrity_set2(block["wd"] | block["wf"], skip_check=block["skip_integrity"]):
                 print("[WARN] '%s' has been modified outside of lab book." % failed)
-
-        # Check whether any named files have results (usages) attached to files that
-        # haven't been signed off...?
-        pass
 
         start_clock = datetime.now()
         proc = subprocess.Popen(

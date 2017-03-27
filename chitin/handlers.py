@@ -92,16 +92,7 @@ class BowtieCommandHandler(CommandHandler):
                 continue
 
             if field in interesting:
-                try:
-                    if field == "-x":
-                        h = util.hashfiles(glob.glob(fields[field_i + 1] + "*"))
-                    else:
-                        #h = util.get_file_record(fields[field_i + 1])["digest"]
-                        h = util.hashfile(fields[field_i + 1])
-                except:
-                    pass
-                    h = 0
-                meta[interesting[field]] = "%s (%s)" % (fields[field_i + 1], h)
+                meta[interesting[field]] = "%s" % fields[field_i + 1]
                 skip = True
                 continue
 

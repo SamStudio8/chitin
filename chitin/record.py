@@ -160,8 +160,23 @@ class CommandMeta(db.Model):
     command_uuid = db.Column(db.Integer, db.ForeignKey('command.uuid'))
     command = db.relationship('Command', backref=db.backref('meta', lazy='dynamic'))
 
-    def __init__(self, command_uuid, category, key, value):
-        self.command = command_uuid
+    def __init__(self, command, category, key, value):
+        self.command = command
+        self.category = category
+        self.key = key
+        self.value = str(value)
+
+class ResourceCommandMeta(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    category = db.Column(db.String(40))
+    key = db.Column(db.String(40))
+    value = db.Column(db.String(40))
+
+    resource_command_uuid = db.Column(db.Integer, db.ForeignKey('resource_command.uuid'))
+    resource_command = db.relationship('ResourceCommand', backref=db.backref('meta', lazy='dynamic'))
+
+    def __init__(self, resource_command, category, key, value):
+        self.resource_command = resource_command
         self.category = category
         self.key = key
         self.value = str(value)

@@ -58,7 +58,13 @@ def add_file_record2(path, cmd_str, status, cmd_uuid=None):
         resource_command = record.ResourceCommand(resource, cmd, status)
         record.db.session.add(resource_command)
 
+        meta = attempt_parse_type(path)
+        if meta:
+            for key, value in meta.items():
+                record.db.session.add(record.ResourceCommandMeta(resource_command, "handler", key, value))
+
     record.db.session.commit()
+
 
 def add_command_block(run_uuid, job=None):
     run = None
@@ -98,6 +104,13 @@ def add_command_text(cmd_uuid, key, text):
     record.db.session.add(ctxt)
     record.db.session.commit()
 
+def add_command_meta(cmd_uuid, meta_d):
+    cmd = get_command_by_uuid(cmd_uuid)
+    for meta_cat in meta_d:
+        for key, value in meta_d[meta_cat].items():
+            record.db.session.add(record.CommandMeta(cmd, meta_cat, key, value))
+    record.db.session.commit()
+
 def set_command_return_code(cmd_uuid, return_code):
     cmd = get_command_by_uuid(cmd_uuid)
     cmd.return_code = return_code
@@ -134,6 +147,7 @@ def check_integrity_set2(path_set, skip_check=False):
                         continue
                     if check_integrity2(i_abspath):
                         failed.append(i_abspath)
+
     return sorted(failed)
 
 

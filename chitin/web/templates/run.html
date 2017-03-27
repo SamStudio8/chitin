@@ -41,6 +41,33 @@
                     <td>{{ file.status }}</td>
                     <td style="background: {{ bg }}"><a href="{{ url_for('resource_detail', resource=file.resource.uuid) }}">{{ file.resource.current_path }}</a></td>
                 </tr>
+                {% if (file.meta.all())|length > 0 %}
+                        {% for meta in file.meta %}
+                        <tr>
+                            <td></td>
+                            <td></td>
+                            <td>{{meta.key}}</td>
+                            <td>{{meta.value}}</td>
+                        </tr>
+                        {% endfor %}
+                {% endif %}
+                {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+        {% if (command.meta.all())|length > 0 %}
+            <br>
+            <b>Metadata</b>
+            <table class="table">
+                <thead>
+                </thead>
+                <tbody>
+                {% for meta in command.meta %}
+                <tr>
+                    <td>{{meta.category}}</td>
+                    <td>{{meta.key}}</td>
+                    <td>{{meta.value | chitin | safe}}</td>
+                </tr>
                 {% endfor %}
                 </tbody>
             </table>
