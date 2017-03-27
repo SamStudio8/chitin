@@ -23,15 +23,21 @@ db = SQLAlchemy(app)
 #TODO Replace experiment
 class Experiment(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
+    name = db.Column(db.String(64))
     base_path = db.Column(db.String(512))
 
     #FUTURE(samstudio8) Experiments belong to books
     #book_id = db.Column(db.Integer, db.ForeignKey('labbook.uuid'))
     #book = db.relationship('Labbook', backref=db.backref('meta', lazy='dynamic'))
 
-    def __init__(self, path):
+    def __init__(self, path, name=None):
         self.uuid = str(uuid.uuid4())
         self.base_path = os.path.abspath(path)
+
+        if name:
+            self.name = name
+        else:
+            self.name = self.uuid
 
     def get_path(self):
         return os.path.join(self.base_path, self.uuid)

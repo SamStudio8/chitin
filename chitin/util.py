@@ -387,8 +387,8 @@ def check_status_path_set(path_set):
 
 
 ################################################################################
-def register_experiment(path, create_dir=False, params=None):
-    exp = record.Experiment(path)
+def register_experiment(path, create_dir=False, params=None, name=None):
+    exp = record.Experiment(path, name)
     record.db.session.add(exp)
     record.db.session.commit()
 

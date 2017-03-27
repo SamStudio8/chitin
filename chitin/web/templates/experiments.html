@@ -5,7 +5,7 @@
     <tbody>
     {% for e in experiments %}
     <tr>
-        <td style="font-family:monospace;"><b><a href="{{ url_for('experiment_detail', experiment=e.uuid) }}">{{ e.uuid }}</a></b></td>
+        <td style="font-family:monospace;"><span class="tiny">{{ e.uuid }}</span><br><b><a href="{{ url_for('experiment_detail', experiment=e.uuid) }}">{{ e.name }}</a></b></td>
     </tr>
     {% endfor %}
     </tbody>
