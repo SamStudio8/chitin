@@ -247,6 +247,10 @@ class ChitinDaemon(object):
                         continue
                 util.add_file_record2(path, cmd_str, cmd_uuid=cmd_uuid, status=status_code)
 
+            for orig_path, new_path in status["moves"].items():
+                print("*\t%s -> %s" % (orig_path, new_path))
+                util.add_file_record2(orig_path, cmd_str, cmd_uuid=cmd_uuid, status='V', new_path=new_path)
+
         # Terrible way to run filetype handlers
         util.check_integrity_set2(watched_files | new_files, skip_check=block["cmd_block"]["skip_integrity"])
 

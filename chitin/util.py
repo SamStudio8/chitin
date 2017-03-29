@@ -46,7 +46,7 @@ def get_resource_by_uuid(uuid):
         return None
     return resource
 
-def add_file_record2(path, cmd_str, status, cmd_uuid=None):
+def add_file_record2(path, cmd_str, status, cmd_uuid=None, new_path=None):
     resource = get_resource_by_path(path)
     if not resource:
         new_hash = hashfile(path)
@@ -71,7 +71,7 @@ def add_file_record2(path, cmd_str, status, cmd_uuid=None):
         record.db.session.commit()
 
     if cmd:
-        resource_command = record.ResourceCommand(resource, cmd, status, h=new_hash)
+        resource_command = record.ResourceCommand(resource, cmd, status, h=new_hash, new_path=new_path)
         record.db.session.add(resource_command)
 
         meta = attempt_parse_type(path)
@@ -218,9 +218,9 @@ def check_rules_integrity(path):
 
 def check_status_set2(path_set):
     file_statii = {}
-    file_codes = {"C": 0, "M": 0, "D": 0, "U": 0}
-    codes = {"C": 0, "M": 0, "D": 0, "U": 0}
+    codes = {"C": 0, "M": 0, "D": 0, "U": 0, "V": 0}
     hashes = {}
+    moves = {}
 
     for item in path_set:
         item = os.path.abspath(item)
@@ -247,15 +247,25 @@ def check_status_set2(path_set):
             file_statii[item] = stat[0]
             hashes[item] = (stat[1], stat[2])
 
+    #TODO Naive move checking
+    for deleted_f in [f for f in file_statii if file_statii[f] == "D"]:
+        for created_f in [f for f in file_statii if file_statii[f] == "C"]:
+            if hashes[deleted_f][1] == hashes[created_f][0]:
+                # Deleted file was moved (probably)!
+                moves[deleted_f] = created_f
+                codes["V"] += 1
+                del file_statii[deleted_f]
+                del file_statii[created_f]
+                break
+
     for s in file_statii.values():
-        file_codes[s] += 1
         codes[s] += 1
 
     return {
         "files": file_statii,
-        "f_codes": file_codes,
         "codes": codes,
         "hashes": hashes,
+        "moves": moves,
     }
 
 ################################################################################
@@ -362,59 +372,6 @@ def hashfile(path, halg=hashlib.md5, bs=65536):
         halg.update(buff)
     f.close()
     return halg.hexdigest()
-
-def check_status_path_set(path_set):
-    dir_statii = {}
-    file_statii = {}
-    dir_codes = {"C": 0, "M": 0, "D": 0, "U": 0}
-    file_codes = {"C": 0, "M": 0, "D": 0, "U": 0}
-    codes = {"C": 0, "M": 0, "D": 0, "U": 0}
-    hashes = {}
-
-    for item in path_set:
-        item = os.path.abspath(item)
-        if not os.path.exists(item):
-            stat = get_status(item)
-            file_statii[item] = stat[0]
-            hashes[item] = (stat[1], stat[2])
-
-        if os.path.isdir(item):
-            stat = get_status(item)
-            dir_statii[item] = stat[0]
-            hashes[item] = (stat[1], stat[2])
-
-            for subitem in os.listdir(item):
-                i_abspath = os.path.join(item, subitem)
-                if os.path.isdir(i_abspath):
-                    stat = get_status(i_abspath)
-                    dir_statii[i_abspath] = stat[0]
-                    hashes[i_abspath] = (stat[1], stat[2])
-                else:
-                    #TODO Do we want to keep a record of the files of untargeted subfolders?
-                    stat = get_status(i_abspath)
-                    file_statii[i_abspath] = stat[0]
-                    hashes[i_abspath] = (stat[1], stat[2])
-        elif os.path.isfile(item):
-            stat = get_status(item)
-            file_statii[item] = stat[0]
-            hashes[item] = (stat[1], stat[2])
-
-    for s in dir_statii.values():
-        dir_codes[s] += 1
-        codes[s] += 1
-    for s in file_statii.values():
-        file_codes[s] += 1
-        codes[s] += 1
-
-    return {
-        "dirs": dir_statii,
-        "files": file_statii,
-        "d_codes": dir_codes,
-        "f_codes": file_codes,
-        "codes": codes,
-        "hashes": hashes,
-    }
-
 
 ################################################################################
 def register_or_fetch_project(name):

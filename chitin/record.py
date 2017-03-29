@@ -236,18 +236,18 @@ class ResourceCommand(db.Model):
 
     status = db.Column(db.String(1))
 
-    def __init__(self, resource, cmd, status, h=None):
+    def __init__(self, resource, cmd, status, h=None, new_path=None):
         self.uuid = str(uuid.uuid4())
         self.resource = resource
         self.command = cmd
         self.status = status
 
-        abspath = resource.current_path
         self.hash = h
-
+        if status == "V" and new_path:
+            self.resource.current_path = new_path
+            self.hash = self.resource.current_hash
         if status == "D" and not h:
             self.resource.ghost = True
-            #self.hash = self.resource.current_hash
         else:
             # Don't update the current_hash for ghosts, this means users
             # can find copies of the deleted file through its hash_friends
