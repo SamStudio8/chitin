@@ -15,7 +15,7 @@ from cmd import attempt_parse_type, attempt_integrity_type
 def get_file_record(path):
     path = os.path.abspath(path)
     try:
-        item = record.Resource.query.filter(record.Resource.current_path==path)[0]
+        item = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==False)[0]
     except IndexError:
         return None
     return item
@@ -23,10 +23,21 @@ def get_file_record(path):
 def get_resource_by_path(path):
     path = os.path.abspath(path)
     try:
-        resource = record.Resource.query.filter(record.Resource.current_path==path)[0]
+        resource = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==False)[0]
     except IndexError:
         return None
     return resource
+
+def get_ghosts_by_path(path, uuid=None):
+    path = os.path.abspath(path)
+    try:
+        if uuid:
+            resources = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==True, record.Resource.uuid!=uuid)
+        else:
+            resources = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==True)
+    except IndexError:
+        return None
+    return resources
 
 def get_resource_by_uuid(uuid):
     try:
@@ -42,6 +53,11 @@ def add_file_record2(path, cmd_str, status, cmd_uuid=None):
         resource = record.Resource(path, new_hash)
         record.db.session.add(resource)
         record.db.session.commit()
+    else:
+        try:
+            new_hash = hashfile(path)
+        except:
+            new_hash = None
 
     if cmd_uuid:
         # There is always one, except for (?)
@@ -55,7 +71,7 @@ def add_file_record2(path, cmd_str, status, cmd_uuid=None):
         record.db.session.commit()
 
     if cmd:
-        resource_command = record.ResourceCommand(resource, cmd, status)
+        resource_command = record.ResourceCommand(resource, cmd, status, h=new_hash)
         record.db.session.add(resource_command)
 
         meta = attempt_parse_type(path)

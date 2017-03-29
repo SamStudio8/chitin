@@ -154,14 +154,17 @@ class Resource(db.Model):
     current_path = db.Column(db.String(512))
     current_hash = db.Column(db.String(64))
 
+    ghost = db.Column(db.Boolean)
+
     def __init__(self, path, rhash):
         self.uuid = str(uuid.uuid4())
         self.current_path = path
         self.current_hash = rhash
+        self.ghost = False
 
     @property
     def hash_friends(self):
-        return Resource.query.filter(Resource.current_hash == self.current_hash, Resource.uuid != self.uuid)
+        return Resource.query.filter(Resource.current_hash == self.current_hash, Resource.uuid != self.uuid, Resource.ghost == False)
 
     @property
     def last_command(self):
@@ -233,16 +236,22 @@ class ResourceCommand(db.Model):
 
     status = db.Column(db.String(1))
 
-    def __init__(self, resource, cmd, status):
+    def __init__(self, resource, cmd, status, h=None):
         self.uuid = str(uuid.uuid4())
         self.resource = resource
         self.command = cmd
         self.status = status
 
         abspath = resource.current_path
-        self.hash = util.hashfile(abspath)
+        self.hash = h
 
-        self.resource.current_hash = self.hash
+        if status == "D" and not h:
+            self.resource.ghost = True
+            #self.hash = self.resource.current_hash
+        else:
+            # Don't update the current_hash for ghosts, this means users
+            # can find copies of the deleted file through its hash_friends
+            self.resource.current_hash = self.hash
 
     def check_hash(self):
         return self.resource.current_hash == self.hash

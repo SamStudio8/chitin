@@ -29,7 +29,8 @@ def text_detail(text):
 @record.app.route('/resource/<resource>')
 def resource_detail(resource):
     resource = record.Resource.query.get_or_404(resource)
-    return render_template('resource.html', resource=resource)
+    ghosts = util.get_ghosts_by_path(resource.current_path, uuid=resource.uuid)
+    return render_template('resource.html', resource=resource, ghosts=ghosts)
 
 @record.app.route('/search')
 def search():
