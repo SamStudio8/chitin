@@ -1,7 +1,12 @@
 {% include 'header.html' %}
 <b>Experiment#</b>
 <br/>
+{% if exp.active %}
 <span class="tiny" style="margin-top:0; padding-top:0;">{{ exp.uuid }}</span>
+{% else %}
+<span class="tiny" style="margin-top:0; padding-top:0;"><strike>{{ exp.uuid }}</strike></span>
+{% endif %}
+
 <h3 style="margin-top:0; padding-top:0;">{{ exp.name }}</h3>
 <table class="table">
     <thead>

@@ -32,6 +32,12 @@ class Project(db.Model):
         self.last_exp_ts = datetime.datetime.now()
 
     def get_experiments(self):
+        for exp in self.experiments:
+            path = exp.get_path()
+            #TODO Not very efficient and a bit gross
+            if not exp.shell and not os.path.exists(path):
+                exp.active = False
+                db.session.commit() #TODO Is this needed?
         return self.experiments.order_by(Experiment.timestamp.desc())
 
 
@@ -45,13 +51,17 @@ class Experiment(db.Model):
     project = db.relationship('Project', backref=db.backref('experiments', lazy='dynamic'))
 
     timestamp = db.Column(db.DateTime)
+    active = db.Column(db.Boolean)
+    shell = db.Column(db.Boolean)
 
-    def __init__(self, path, project, name=None):
+    def __init__(self, path, project, name=None, shell=False):
         self.uuid = str(uuid.uuid4())
         self.base_path = os.path.abspath(path)
         self.project = project
         self.timestamp = datetime.datetime.now()
         self.project.last_exp_ts = self.timestamp
+        self.active = True
+        self.shell = shell
 
         if name:
             self.name = name

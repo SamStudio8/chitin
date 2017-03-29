@@ -670,7 +670,7 @@ def shell():
     message = VERSION
 
     project = util.register_or_fetch_project("Shell Sessions")
-    exp = util.register_experiment(os.path.abspath('.'), project, name="Shell Session @ %s" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    exp = util.register_experiment(os.path.abspath('.'), project, name="Shell Session @ %s" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"), shell=True)
     run, params = util.register_job(exp.uuid)
 
     def get_bottom_toolbar_tokens(cli):

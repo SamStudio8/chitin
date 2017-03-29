@@ -383,8 +383,8 @@ def register_or_fetch_project(name):
         record.db.session.commit()
     return project
 
-def register_experiment(path, project, create_dir=False, params=None, name=None):
-    exp = record.Experiment(path, project, name=name)
+def register_experiment(path, project, create_dir=False, params=None, name=None, shell=False):
+    exp = record.Experiment(path, project, name=name, shell=shell)
     record.db.session.add(exp)
     record.db.session.commit()
 
