@@ -18,7 +18,7 @@ test_requirements = [
 
 setuptools.setup(
     name="chitin",
-    version="0.0.1",
+    version="0.0.3a",
     url="https://github.com/samstudio8/chitin",
 
     description="",
