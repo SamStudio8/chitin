@@ -93,7 +93,7 @@ def get_node_queue_by_name(node, queue):
 
 def purge_commands_by_client(client_uuid):
     count = 0
-    for command in record.Command.query.filter(record.Command.client == client_uuid):
+    for command in record.Command.query.filter(record.Command.client == client_uuid, record.Command.claimed == False, record.Command.return_code == -1):
         command.return_code = 128
         command.active = False
         record.db.session.commit()

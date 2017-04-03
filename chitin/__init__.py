@@ -383,7 +383,7 @@ class Chitin(object):
                 return None
 
         # TODO Should probably prevent overriding of defaults?
-        util.add_job_params(job_uuid, job_params)
+        util.add_job_params(job.uuid, job_params)
 
         commands = self.parse_script2(script, job_params)
         self.execute(commands, run=job.uuid, node=node, queue=queue) #could actually get the UUID from the run_params["job_uuid"]
