@@ -25,7 +25,7 @@ import util
 #mpl = multiprocessing.log_to_stderr()
 #mpl.setLevel(logging.DEBUG)
 
-VERSION = "Chitin 0.0.2a: Curious Crustacean (develop)"
+VERSION = "Chitin 0.0.3a: Curious Crustacean (develop)"
 WELCOME = VERSION + """
 Please don't rely on the database schema to be the same tomorrow... <3
 
@@ -39,10 +39,6 @@ Currently interactive and multi-line commands don't work, sorry about that.
 
 == Special Commands ==
 %history <path>         List complete history for a given path
-%how <path> <md5>       List history for given path and a particular hash
-%needed <path> <md5>    List required commands and files to generate a file hash
-%hashdir <path> <md5>   List hashes of directory contents for a given dir hash
-%script <path> [...]    Execute a bash script (very beta and awesomely grim)
 
 %q                      Switch suppression of stderr and stdout
 %i                      Switch performing full pre-command integrity checks
@@ -91,98 +87,8 @@ def history(file_path):
                     )
             print ""
 
-def how(path, hash):
-    abspath = os.path.abspath(path)
-    item = None
-    try:
-        ie = record.ItemEvent.query.join(record.Item).filter(record.ItemEvent.hash==hash, record.Item.path==abspath)[0]
-    except IndexError:
-        print "Not found..."
-        return
-
-    print "{}\t{}\t{}\t{}\t{}".format(
-        ie.event.timestamp.strftime("%c"),
-        ie.event.user,
-        ie.hash,
-        ie.result_type,
-        ie.event.cmd,
-    )
-    for m in ie.event.meta.all():
-        print "{}{}\t{}\t{}".format(
-            " " * 80,
-            m.category,
-            m.key,
-            m.value
-        )
-    for m in ie.event.items.all():
-        print "{}{}\t{}".format(
-            " " * 80,
-            m.item.path,
-            m.hash,
-        )
-
-#TODO Bonus points for allowing one to order by name or timestamp
-#TODO Additional bonus points for allowing one to ignore subdirs or not
-def hashdir(path, hash):
-    abspath = os.path.abspath(path)
-    if not os.path.exists(abspath) or not os.path.isdir(abspath):
-        print("Not a valid directory?")
-        return
-
-    dir_ie_record = None
-    try:
-        dir_ie_record = record.ItemEvent.query.join(record.Item).filter(record.ItemEvent.hash==hash, record.Item.path==abspath)[0]
-    except IndexError:
-        print("Not a directory that I have encountered?")
-        return
-
-    # Get items that contain the abspath in their path, that have Events before the hash of the target directory
-    potential_item_set = record.ItemEvent.query.join(record.Item).filter(record.Item.path.like(abspath+'%')).join(record.Event).filter(record.Event.timestamp <= dir_ie_record.event.timestamp).group_by(record.Item.path).order_by(record.Item.path).all()
-
-    #TODO This is a gross workaround for not having the concept of ItemSets...
-    for ie in potential_item_set:
-        if ie.hash != '0':
-            print "%s\t%s" % (ie.hash, ie.item.path)
-
-def needed(path, hash):
-    abspath = os.path.abspath(path)
-    item = None
-    try:
-        ie = record.ItemEvent.query.join(record.Item).filter(record.ItemEvent.hash==hash, record.Item.path==abspath)[0]
-    except IndexError:
-        print "Not found..."
-        return
-
-    crit_paths = [i.item.path for i in ie.event.items.all()]
-    events = [ie.event]
-    uuids = set()
-    needed_ies = []
-    while len(events) > 0:
-        event = events.pop()
-        if event.uuid in uuids:
-            continue
-        uuids.add(event.uuid)
-        for ie in event.items.all():
-            if os.path.isdir(ie.item.path):
-                continue
-
-            if ie.result_type != 'U' and ie.item.path in crit_paths:
-                needed_ies.append("%s (%s)\n\t%s" % (ie.item.path, ie.hash, ie.event.cmd))
-                crit_paths.extend([i.item.path for i in ie.event.items.all()] )
-
-            try:
-                events.append(record.ItemEvent.query.join(record.Item).filter(record.ItemEvent.hash==ie.hash, record.Item.path==ie.item.path, record.ItemEvent.result_type!='U')[0].event)
-            except IndexError:
-                pass
-
-    for ie in reversed(needed_ies):
-        print ie
-
 special_commands = {
     "history": history,
-    "how": how,
-    "needed": needed,
-    "hashdir": hashdir,
 }
 
 class ChitinDaemon(object):
