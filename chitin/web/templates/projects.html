@@ -1,0 +1,15 @@
+{% include 'header.html' %}
+<h1>Projects</h1>
+<table class="table">
+    <thead>
+    </thead>
+    <tbody>
+    {% for p in projects %}
+    <tr>
+        <td style="font-family:monospace;"><span class="tiny">{{ p.uuid }}</span><br><b><a href="{{ url_for('project_detail', project=p.uuid) }}">{{ p.name }}</a></b></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% include 'footer.html' %}
+

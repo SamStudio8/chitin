@@ -1,0 +1,35 @@
+{% include 'header.html' %}
+<hr>
+<h2>Executing</h2>
+{% for command in current_queue %}
+    {% if command.return_code == -1 %}
+        {% set bg = '#999999' %}
+    {% elif command.return_code == 0 %}
+        {% set bg = '#adebad' %}
+    {% else %}
+        {% set bg = '#ff9999' %}
+    {% endif %}
+    <div class="side-lamp" style="border-left-color: {{ bg }};">
+        <div style="margin-bottom: 20px;"><b><a href="{{ url_for('project_detail', project=command.block.job.exp.project.uuid) }}">{{ command.block.job.exp.project.name }}</a></b> > <a href="{{ url_for('experiment_detail', experiment=command.block.job.exp.uuid) }}">{{ command.block.job.exp.uuid }}</a> > <a href="{{ url_for('run_detail', run=command.block.job.uuid) }}">{{ command.block.job.uuid }}</a>
+            </br><span class="tiny">{{ command.cmd | chitin | safe }}</span></div>
+    </div>
+{% endfor %}
+
+<h2>Waiting</h2>
+{% for command in waiting %}
+    {% if command.return_code == -1 %}
+        {% set bg = '#999999' %}
+    {% elif command.return_code == 0 %}
+        {% set bg = '#adebad' %}
+    {% else %}
+        {% set bg = '#ff9999' %}
+    {% endif %}
+    <div class="side-lamp" style="border-left-color: {{ bg }};">
+        <div style="margin-bottom: 20px;"><b><a href="{{ url_for('project_detail', project=command.block.job.exp.project.uuid) }}">{{ command.block.job.exp.project.name }}</a></b> > <a href="{{ url_for('experiment_detail', experiment=command.block.job.exp.uuid) }}">{{ command.block.job.exp.uuid }}</a> > <a href="{{ url_for('run_detail', run=command.block.job.uuid) }}">{{ command.block.job.uuid }}</a>
+            </br><span class="tiny">{{ command.cmd | chitin | safe }}</span></div>
+    </div>
+{% endfor %}
+{% include 'footer.html' %}
+
+
+

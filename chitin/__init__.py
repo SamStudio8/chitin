@@ -219,6 +219,7 @@ class ChitinDaemon(object):
         fields = cmd_str.split(" ")
         token_p = util.parse_tokens(fields)
         watched_dirs = token_p["dirs"]
+        watched_dirs.add(command_r.block.job.get_path())
         watched_files = token_p["files"]
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 

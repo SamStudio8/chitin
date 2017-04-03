@@ -1,0 +1,66 @@
+{% include 'header.html' %}
+<b>Resource#</b>
+{% if resource.ghost %}
+<strike><h3 style="margin-top:0; padding-top:0;">{{ resource.uuid }}</h3></strike>
+<h4>{{ resource.full_path }} (Deleted)</h4>
+{% else %}
+<h3 style="margin-top:0; padding-top:0;">{{ resource.uuid }}</h3>
+<h4>{{ resource.full_path }}</h4>
+{% endif %}
+
+<hr>
+<b>History</b>
+<table class="table">
+    <thead>
+    </thead>
+    <tbody>
+    {% for cmd in resource.commands %}
+    <tr>
+        <td>{{ cmd.status }}</td>
+        <td>{{ cmd.command.timestamp }}</td>
+        <td>{{ cmd.command.cmd }}</td>
+        <td>{{ cmd.command.user }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<b>Hash Friends</b>
+<table class="table">
+    <thead>
+    </thead>
+    <tbody>
+    {% for res in resource.hash_friends %}
+    <tr>
+        <td><a href="{{ url_for('resource_detail', resource=res.uuid) }}">{{ res.full_path }}</a></td>
+        <td>{{ res.last_command.command.timestamp }}</td>
+        <td>{{ res.last_command.command.cmd }}</td>
+    </tr>
+    {% else %}
+    <tr>
+        <td>This file has no friends :( It would be a shame if something were to happen to it...</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<b>Ghosts</b>
+<table class="table">
+    <thead>
+    </thead>
+    <tbody>
+    {% for g in ghosts %}
+    <tr>
+        <td>{{ g.last_command.command.timestamp }}</td>
+        <td>{{ g.last_command.command.cmd }}</td>
+        <td>{{ g.full_path }}</td>
+    </tr>
+    {% else %}
+    <tr>
+        <td>This file has no ghosts, you have not nuked it in a previous life :)</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% include 'footer.html' %}
+

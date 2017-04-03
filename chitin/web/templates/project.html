@@ -1,0 +1,22 @@
+{% include 'header.html' %}
+<b>Project#</b>
+<br/>
+<span class="tiny" style="margin-top:0; padding-top:0;">{{ project.uuid }}</span>
+<h3 style="margin-top:0; padding-top:0;">{{ project.name }}</h3>
+<table class="table">
+    <thead>
+    </thead>
+    <tbody>
+    {% for e in project.get_experiments() %}
+    <tr>
+        {% if e.active %}
+            <td style="font-family:monospace;"><span class="tiny">{{ e.uuid }}</span><br><b><a href="{{ url_for('experiment_detail', experiment=e.uuid) }}">{{ e.name }}</a></b></td>
+        {% else %}
+            <td style="font-family:monospace;"><span class="tiny"><strike>{{ e.uuid }}</strike></span><br><b><a style="color: red;" href="{{ url_for('experiment_detail', experiment=e.uuid) }}">{{ e.name }}</a></b></td>
+        {% endif %}
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% include 'footer.html' %}
+

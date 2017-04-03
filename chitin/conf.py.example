@@ -1,0 +1,9 @@
+import record
+
+node1 = record.Node("default", "My Node")
+record.db.session.add(node1)
+record.db.session.commit()
+
+q1 = record.CommandQueue("default", node1)
+record.db.session.add(q1)
+
