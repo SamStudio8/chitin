@@ -84,6 +84,42 @@ def add_file_record2(path, cmd_str, status, cmd_uuid=None, new_path=None, metaco
 
     record.db.session.commit()
 
+def get_queue_by_name(queue):
+    try:
+        return record.CommandQueue.query.filter(record.CommandQueue.name == queue)[0]
+    except IndexError:
+        bq = record.CommandQueue(queue)
+        record.db.session.add(bq)
+        record.db.session.commit()
+        return bq
+
+def purge_commands_by_client(client_uuid):
+    for command in record.Command.query.filter(record.Command.client == client_uuid):
+        command.return_code = 128
+        command.active = False
+        record.db.session.commit()
+
+def queue_command(cmd_uuid, queue=None, client=None):
+    #TODO FUTURE Validate client, authorise access etc.
+    if not queue:
+        bq = get_queue_by_name("default")
+    else:
+        bq = get_queue_by_name(queue)
+    cmd = get_command_by_uuid(cmd_uuid)
+    cmd.queue = bq
+    cmd.active = True
+    cmd.client = client
+    record.db.session.commit()
+
+def get_block_from_queue(queue_name):
+    try:
+        block = record.Command.query.join(record.CommandQueue).filter(record.CommandQueue.name == queue_name, record.Command.return_code == -1, record.Command.claimed == False).order_by(record.Command.position)[0]
+    except IndexError:
+        return None
+
+    block.claimed = True
+    record.db.session.commit()
+    return block
 
 def add_command_block(run_uuid, job=None):
     run = None
@@ -96,8 +132,12 @@ def add_command_block(run_uuid, job=None):
     record.db.session.commit()
     return command_block
 
-def add_command(cmd_str, cmd_block, return_code=-1):
-    cmd = record.Command(cmd_str, cmd_block, return_code=return_code)
+def add_command(cmd_str, cmd_block, return_code=-1, blocked_by=None):
+    blocked_by_cmd = None
+    if blocked_by:
+        blocked_by_cmd = get_command_by_uuid(blocked_by)
+
+    cmd = record.Command(cmd_str, cmd_block, return_code=return_code, blocked_by=blocked_by_cmd)
     record.db.session.add(cmd)
     record.db.session.commit()
     return cmd
@@ -308,14 +348,14 @@ def get_status(path, cmd_str=""):
     return (status, h, last_h)
 
 ###############################################################################
-def parse_tokens(fields, env_vars, insert_uuids=False):
+def parse_tokens(fields, insert_uuids=False):
     dirs_l = []
     file_l = []
     for field_i, field in enumerate(fields):
-        for env_k in env_vars:
-            if '$' + env_k in field:
-                field = field.replace('$' + env_k, str(env_vars[env_k]))
-                fields[field_i] = field
+        #for env_k in env_vars:
+        #    if '$' + env_k in field:
+        #        field = field.replace('$' + env_k, str(env_vars[env_k]))
+        #        fields[field_i] = field
 
         had_semicolon = False
         if field[-1] == ";":

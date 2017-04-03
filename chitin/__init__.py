@@ -189,30 +189,26 @@ class ChitinDaemon(object):
 
     @staticmethod
     def handle_post(block, post_q):
+        command_r = util.get_command_by_uuid(block["uuid"])
         # disgusting
         stdout = block["stdout"]
         stderr = block["stderr"]
 
-        if block["cmd_block"]["show_stderr"]:
-            sys.stderr.write(stderr)
+        #if block["cmd_block"]["show_stderr"]:
+        #    sys.stderr.write(stderr)
 
         end_clock = block["end_clock"]
         start_clock = block["start_clock"]
-        env_vars = block["cmd_block"]["env_vars"]
         return_code = block["return_code"]
-        cmd_str = block["cmd_block"]["cmd"]
-        cmd_uuid = block["cmd_block"]["uuid"]
-        input_meta = block["cmd_block"]["input_meta"]
+        cmd_str = command_r.cmd
 
-        watched_dirs = block["cmd_block"]["wd"]
-        watched_files = block["cmd_block"]["wf"]
 
         if return_code != 0:
             # Should probably still check tokens and such...
             print("[WARN] Command %s exited with non-zero code." % cmd_str)
             block.update({"post": True, "success": False, "removed": False})
-            util.add_command_text(cmd_uuid, "stdout", stdout)
-            util.add_command_text(cmd_uuid, "stderr", stderr)
+            util.add_command_text(command_r.uuid, "stdout", stdout)
+            util.add_command_text(command_r.uuid, "stderr", stderr)
             post_q.put(block)
             return
 
@@ -221,9 +217,9 @@ class ChitinDaemon(object):
 
         # Update field tokens
         fields = cmd_str.split(" ")
-        token_p = util.parse_tokens(fields, env_vars)
-        new_dirs = token_p["dirs"] - watched_dirs
-        new_files = token_p["files"] - watched_files
+        token_p = util.parse_tokens(fields)
+        watched_dirs = token_p["dirs"]
+        watched_files = token_p["files"]
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
         # Parse the output
@@ -232,12 +228,11 @@ class ChitinDaemon(object):
         if cmd.can_parse(fields[0]):
             parsed_meta = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
             meta.update(parsed_meta)
-        meta.update(input_meta)
         meta["run"] = run_meta
 
         # Look for changes
         #TODO This is gross
-        status = util.check_status_set2(watched_dirs | watched_files | new_files | new_dirs)
+        status = util.check_status_set2(watched_dirs | watched_files)
         if status["codes"]["U"] != sum(status["codes"].values()):
             print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
             for path, status_code in status["files"].items():
@@ -246,20 +241,21 @@ class ChitinDaemon(object):
                     usage = True
                     if path not in fields:
                         continue
-                util.add_file_record2(path, cmd_str, cmd_uuid=cmd_uuid, status=status_code)
+                util.add_file_record2(path, cmd_str, cmd_uuid=command_r.uuid, status=status_code)
 
             for orig_path, new_path in status["moves"].items():
                 print("*\t%s -> %s" % (orig_path, new_path))
-                util.add_file_record2(orig_path, cmd_str, cmd_uuid=cmd_uuid, status='V', new_path=new_path)
+                util.add_file_record2(orig_path, cmd_str, cmd_uuid=command_r.uuid, status='V', new_path=new_path)
 
         # Terrible way to run filetype handlers
-        util.check_integrity_set2(watched_files | new_files, skip_check=block["cmd_block"]["skip_integrity"])
+        #util.check_integrity_set2(watched_files, skip_check=block["cmd_block"]["skip_integrity"])
+        util.check_integrity_set2(watched_files)
 
         # Pretty hacky way to get the UUID cmd str
-        token_p = util.parse_tokens(fields, env_vars, insert_uuids=True)
+        token_p = util.parse_tokens(fields, insert_uuids=True)
         uuid_cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
-        util.add_uuid_cmd_str(cmd_uuid, uuid_cmd_str)
-        util.add_command_meta(cmd_uuid, meta)
+        util.add_uuid_cmd_str(command_r.uuid, uuid_cmd_str)
+        util.add_command_meta(command_r.uuid, meta)
 
         block.update({"post": True, "success": True, "removed": False})
         post_q.put(block)
@@ -297,8 +293,9 @@ class ChitinDaemon(object):
                     DONE_ANYTHING = True
 
                     if not block["removed"]:
-                        if block["cmd_block"]["blocked_by_uuid"]:
-                            completed_uuid.remove(block["cmd_block"]["blocked_by_uuid"])
+                        command_r = util.get_command_by_uuid(block["uuid"])
+                        if command_r.blocked_by:
+                            completed_uuid.remove(command_r.blocked_by.uuid)
                         uuids_remaining -= 1
 
                     # Any additional post command duties
@@ -326,25 +323,24 @@ class ChitinDaemon(object):
                         continue
 
                 if len(process_dict) < MAX_PROC and not WAIT_FOR_DONE:
-                    block = None
-                    try:
-                        block = cmd_q.get(timeout=1)
-                    except:
-                        pass
+
+                    block = util.get_block_from_queue("default")
 
                     if not block:
                         if DONE_ANYTHING and not SHELL_MODE:
                             WAIT_FOR_DONE = True
                         continue
 
-                    cmd_uuid = block["uuid"]
-                    if block["blocked_by_uuid"] is not None:
-                        if block["blocked_by_uuid"] not in completed_uuid:
-                            cmd_q.put(block)
+                    cmd_uuid = block.uuid
+                    if block.blocked_by is not None:
+                        if block.blocked_by.uuid not in completed_uuid:
+                            block.position += 1
+                            block.claimed = False
+                            record.db.session.commit()
                             continue
 
                     process_dict[cmd_uuid] = Process(target=ChitinDaemon.run_command,
-                            args=(block, output_q))
+                            args=(cmd_uuid, output_q))
                     process_dict[cmd_uuid].daemon = True
                     process_dict[cmd_uuid].start()
                     uuids_remaining += 1
@@ -356,40 +352,41 @@ class ChitinDaemon(object):
             raise
             return
         finally:
-            cmd_q.close()
             output_q.close()
             post_q.close()
 
     @staticmethod
-    def run_command(block, output_q):
+    def run_command(cmd_uuid, output_q):
+        block = util.get_command_by_uuid(cmd_uuid)
         def preexec_function():
             # http://stackoverflow.com/questions/5045771/python-how-to-prevent-subprocesses-from-receiving-ctrl-c-control-c-sigint <3
             # Ignore the SIGINT signal by setting the handler to the standard signal handler SIG_IGN
             signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         # Check whether files have been altered outside of environment before proceeding
-        for failed in util.check_integrity_set2(block["wd"] | block["wf"], skip_check=block["skip_integrity"]):
+        token_p = util.parse_tokens(block.cmd.split(" "))
+        #for failed in util.check_integrity_set2(token_p["dirs"] | token_p["files"], skip_check=block["skip_integrity"]):
+        for failed in util.check_integrity_set2(token_p["dirs"] | token_p["files"]):
                 print("[WARN] '%s' has been modified outside of lab book." % failed)
 
         start_clock = datetime.now()
         proc = subprocess.Popen(
-                block["cmd"],
+                block.cmd,
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                env=dict(os.environ).update(block["env_vars"]),
+                #env=dict(os.environ).update(block["env_vars"]),
                 preexec_fn = preexec_function,
         )
         stdout, stderr = proc.communicate()
         end_clock = datetime.now()
 
         output_q.put({
-            "uuid": block["uuid"],
+            "uuid": block.uuid,
             "stdout": stdout,
             "stderr": stderr,
             "start_clock": start_clock,
             "end_clock": end_clock,
-            "cmd_block": block,
             "return_code": proc.returncode,
         })
 
@@ -399,11 +396,12 @@ class Chitin(object):
         self.variables = {}
         self.meta = {}
 
+        self.client_uuid = str(uuid.uuid4())
+
         self.skip_integrity = False
         self.suppress = False
         self.ignore_dot = False
 
-        self.cmd_q = Queue()
         self.out_q = Queue()
         self.post_q = Queue()
         self.result_q = Queue()
@@ -416,7 +414,7 @@ class Chitin(object):
 
         signal.signal(signal.SIGINT, self.signal_handler)
         self.daemon = Process(target=ChitinDaemon.orchestrate,
-            args=(self.cmd_q, self.out_q, self.post_q, self.result_q, MAX_PROC, RES_PROC, SHELL_MODE))
+            args=(None, self.out_q, self.post_q, self.result_q, MAX_PROC, RES_PROC, SHELL_MODE))
         self.daemon.start()
 
 
@@ -426,35 +424,12 @@ class Chitin(object):
             return
 
         # Purge uncompleted jobs from cmd_q
-        try:
-            count = 0
-            while True:
-                block = self.cmd_q.get_nowait()
-                block.update({"post": True, "success": False, "removed": True})
-                block["return_code"] = 128
-                self.post_q.put(block)
-                count += 1
-        except Exception:
-            print("Purged %d jobs." % count)
+        n = util.purge_commands_by_client(self.client_uuid)
+        print("Purged %d jobs." % n)
 
         # Wait for running jobs to complete
         print("Waiting for remaining jobs to complete.")
         print("chitin should die automatically.")
-
-    def queue_command(self, cmd_uuid, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, blocked_by, self_flags):
-
-        self.cmd_q.put({
-            "uuid": cmd_uuid,
-            "blocked_by_uuid": blocked_by,
-            "cmd": cmd_str,
-            "env_vars": env_vars,
-            "wd": watch_dirs,
-            "wf": watch_files,
-            "input_meta": input_meta,
-            "tokens": tokens,
-            "skip_integrity": self_flags["skip_integ"],
-            "show_stderr": self_flags["show_stderr"],
-        })
 
     def attempt_special(self, cmd_str):
         # Special command handling
@@ -494,7 +469,6 @@ class Chitin(object):
     def super_handle(self, command_set, run=None):
         self.execute(command_set, run=run)
 
-
     def exe_script(self, script, job, job_params):
         for p in job_params:
             if not job_params[p]:
@@ -518,27 +492,17 @@ class Chitin(object):
         event_group = util.add_command_block(run)
         last_uuid = None
         for command_i, command in enumerate(command_set):
-            cmd = util.add_command(command, event_group)
-            self.handle_command(cmd.uuid, command.split(" "), self.variables, self.meta, blocked_by=last_uuid)
+            token_p = util.parse_tokens(command.split(" "))
+
+            # Collapse new command tokens to cmd_str
+            cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
+
+            cmd = util.add_command(cmd_str, event_group, blocked_by=last_uuid)
+            #util.add_command_meta(cmd.uuid, self.meta) TODO -- we don't really want to repeat this experiment data for every command
             last_uuid = cmd.uuid
 
-    #TODO FUTURE Drop cmd_uuid from here
-    def handle_command(self, cmd_uuid, fields, env_variables, input_meta, blocked_by=None):
-        # Determine files and folders on which to watch for changes
-        token_p = util.parse_tokens(fields, env_variables)
-        if not self.ignore_dot:
-            token_p["dirs"].add(".")
-        watched_dirs = token_p["dirs"]
-        watched_files = token_p["files"]
-
-        # Collapse new command tokens to cmd_str and print cmd with uuid to user (before warnings)
-        cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
-
-        ### Queue for Execution
-        self.queue_command(cmd_uuid, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p, blocked_by, {
-                 "skip_integ": self.skip_integrity,
-                 "show_stderr": self.show_stderr,
-        })
+            # Add to queue
+            util.queue_command(cmd.uuid, queue="default", client=self.client_uuid)
 
     def parse_script2(self, path, param_d):
         def check_line(line):

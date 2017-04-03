@@ -116,6 +116,14 @@ class Job(db.Model):
             count += g.commands.count()
         return count
 
+class CommandQueue(db.Model):
+    uuid = db.Column(db.String(40), primary_key=True)
+    name = db.Column(db.String(64)) # TODO Force unique names
+
+    def __init__(self, name):
+        self.uuid = str(uuid.uuid4())
+        self.name = name
+
 class CommandBlock(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
@@ -223,15 +231,34 @@ class Command(db.Model):
     block_id = db.Column(db.Integer, db.ForeignKey('command_block.id'))
     block = db.relationship('CommandBlock', backref=db.backref('commands', lazy='dynamic'))
 
+    blocked_by_uuid = db.Column(db.Integer, db.ForeignKey('command.uuid'))
+    blocked_by = db.relationship('Command', backref=db.backref('blocking', lazy='dynamic'), remote_side="Command.uuid")
+
     return_code = db.Column(db.Integer)
 
-    def __init__(self, cmd_str, cmd_block, return_code=-1):
+    #TODO FUTURE
+    # Some of this can live in a middle meta class, but for ease it goes here
+    queue_uuid = db.Column(db.Integer, db.ForeignKey('command_queue.uuid'))
+    queue = db.relationship('CommandQueue', backref=db.backref('commands', lazy='dynamic'))
+    position = db.Column(db.Integer)
+    active = db.Column(db.Boolean)
+    claimed = db.Column(db.Boolean)
+    client = db.Column(db.String(40))
+
+    def __init__(self, cmd_str, cmd_block, return_code=-1, blocked_by=None):
         self.uuid = str(uuid.uuid4())
         self.cmd = cmd_str
         self.user = getpass.getuser()
         self.timestamp = datetime.datetime.now()
         self.block = cmd_block
         self.return_code = return_code
+
+        if blocked_by:
+            self.blocked_by=blocked_by
+
+        self.active = True
+        self.claimed = False
+        self.position = 0
 
 class ResourceCommand(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
@@ -285,4 +312,3 @@ class CommandText(db.Model):
         self.num_lines = text.count("\n")
 
 db.create_all()
-

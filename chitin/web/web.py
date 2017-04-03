@@ -34,8 +34,9 @@ def resource_detail(resource):
 
 @record.app.route('/live')
 def live():
-    current_queue = record.Command.query.filter(record.Command.return_code == -1)
-    return render_template('live.html', current_queue=current_queue)
+    current_queue = record.Command.query.filter(record.Command.claimed == True, record.Command.return_code == -1).order_by(record.Command.position)
+    waiting = record.Command.query.filter(record.Command.claimed == False, record.Command.return_code == -1).order_by(record.Command.position)
+    return render_template('live.html', current_queue=current_queue, waiting=waiting)
 
 @record.app.route('/search')
 def search():
