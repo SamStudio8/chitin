@@ -50,7 +50,7 @@ def add_file_record2(path, cmd_str, status, cmd_uuid=None, new_path=None, metaco
     resource = get_resource_by_path(path)
     if not resource:
         new_hash = hashfile(path)
-        resource = record.Resource(path, new_hash)
+        resource = record.Resource(get_node_by_uuid(record.NODE_UUID), path, new_hash)
         record.db.session.add(resource)
         record.db.session.commit()
     else:
@@ -84,36 +84,42 @@ def add_file_record2(path, cmd_str, status, cmd_uuid=None, new_path=None, metaco
 
     record.db.session.commit()
 
-def get_queue_by_name(queue):
+def get_node_queue_by_name(node, queue):
+    #TODO FUTURE Check permissions to submit to Q etc. ?
     try:
-        return record.CommandQueue.query.filter(record.CommandQueue.name == queue)[0]
+        return record.CommandQueue.query.join(record.Node).filter(record.Node.name == node, record.CommandQueue.name == queue)[0]
     except IndexError:
-        bq = record.CommandQueue(queue)
-        record.db.session.add(bq)
-        record.db.session.commit()
-        return bq
+        return None
 
 def purge_commands_by_client(client_uuid):
+    count = 0
     for command in record.Command.query.filter(record.Command.client == client_uuid):
         command.return_code = 128
         command.active = False
         record.db.session.commit()
+        count += 1
+    return count
 
-def queue_command(cmd_uuid, queue=None, client=None):
+def queue_command(cmd_uuid, node, queue, client=None):
     #TODO FUTURE Validate client, authorise access etc.
-    if not queue:
-        bq = get_queue_by_name("default")
-    else:
-        bq = get_queue_by_name(queue)
+    bq = get_node_queue_by_name(node, queue)
     cmd = get_command_by_uuid(cmd_uuid)
-    cmd.queue = bq
-    cmd.active = True
-    cmd.client = client
-    record.db.session.commit()
+    if bq:
+        cmd.queue = bq
+        cmd.active = True
+        cmd.client = client
+        record.db.session.commit()
+    else:
+        print("Failed to enqueue command %s to %s:%s" % (cmd.uuid, node, queue))
 
-def get_block_from_queue(queue_name):
+def get_block_from_node_queue(node_name, queue_name):
+    bq = get_node_queue_by_name(node_name, queue_name)
+    if not bq:
+        print("Failed to acquire command from %s:%s" % (node_name, queue_name))
+        return None
+
     try:
-        block = record.Command.query.join(record.CommandQueue).filter(record.CommandQueue.name == queue_name, record.Command.return_code == -1, record.Command.claimed == False).order_by(record.Command.position)[0]
+        block = record.Command.query.join(record.CommandQueue).filter(record.CommandQueue.uuid == bq.uuid, record.Command.return_code == -1, record.Command.claimed == False).order_by(record.Command.position)[0]
     except IndexError:
         return None
 
@@ -149,6 +155,14 @@ def get_command_by_uuid(uuid):
     except IndexError as e:
         pass
     return cmd
+
+def get_node_by_uuid(uuid):
+    node = None
+    try:
+        node = record.Node.query.filter(record.Node.uuid==str(uuid))[0]
+    except IndexError as e:
+        pass
+    return node
 
 def add_uuid_cmd_str(cmd_uuid, uuid_cmd_str):
     cmd = get_command_by_uuid(cmd_uuid)

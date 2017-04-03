@@ -39,7 +39,7 @@
                     {% endif %}
                 <tr>
                     <td>{{ file.status }}</td>
-                    <td style="background: {{ bg }}"><a href="{{ url_for('resource_detail', resource=file.resource.uuid) }}">{{ file.resource.current_path }}</a></td>
+                    <td style="background: {{ bg }}"><a href="{{ url_for('resource_detail', resource=file.resource.uuid) }}">{{ file.resource.full_path }}</a></td>
                 </tr>
                 {% if (file.meta.all())|length > 0 %}
                         {% for meta in file.meta %}

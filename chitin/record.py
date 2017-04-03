@@ -116,13 +116,28 @@ class Job(db.Model):
             count += g.commands.count()
         return count
 
-class CommandQueue(db.Model):
+class Node(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
-    name = db.Column(db.String(64)) # TODO Force unique names
+    name = db.Column(db.String(64))
+    description = db.Column(db.String(64))
 
-    def __init__(self, name):
+    def __init__(self, name, desc):
         self.uuid = str(uuid.uuid4())
         self.name = name
+        self.description = desc
+
+
+class CommandQueue(db.Model):
+    uuid = db.Column(db.String(40), primary_key=True)
+    name = db.Column(db.String(64)) # TODO Force unique names by node
+
+    node_uuid = db.Column(db.Integer, db.ForeignKey('node.uuid'))
+    node = db.relationship('Node', backref=db.backref('queues', lazy='dynamic'))
+
+    def __init__(self, name, node):
+        self.uuid = str(uuid.uuid4())
+        self.name = name
+        self.node = node
 
 class CommandBlock(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -174,8 +189,12 @@ class Resource(db.Model):
 
     ghost = db.Column(db.Boolean)
 
-    def __init__(self, path, rhash):
+    current_node_uuid = db.Column(db.Integer, db.ForeignKey('node.uuid'))
+    current_node = db.relationship('Node', backref=db.backref('resources', lazy='dynamic'))
+
+    def __init__(self, node, path, rhash):
         self.uuid = str(uuid.uuid4())
+        self.current_node = node
         self.current_path = path
         self.current_hash = rhash
         self.ghost = False
@@ -183,6 +202,10 @@ class Resource(db.Model):
     @property
     def hash_friends(self):
         return Resource.query.filter(Resource.current_hash == self.current_hash, Resource.uuid != self.uuid, Resource.ghost == False)
+
+    @property
+    def full_path(self):
+        return self.current_node.name + ":" + self.current_path
 
     @property
     def last_command(self):
@@ -312,3 +335,6 @@ class CommandText(db.Model):
         self.num_lines = text.count("\n")
 
 db.create_all()
+import conf
+NODE_UUID = conf.node1.uuid
+NODE_NAME = conf.node1.name

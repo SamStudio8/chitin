@@ -324,7 +324,8 @@ class ChitinDaemon(object):
 
                 if len(process_dict) < MAX_PROC and not WAIT_FOR_DONE:
 
-                    block = util.get_block_from_queue("default")
+                    #TODO FUTURE If this fails, we loop and cannot SIGINT
+                    block = util.get_block_from_node_queue(record.NODE_NAME, "default")
 
                     if not block:
                         if DONE_ANYTHING and not SHELL_MODE:
@@ -469,7 +470,8 @@ class Chitin(object):
     def super_handle(self, command_set, run=None):
         self.execute(command_set, run=run)
 
-    def exe_script(self, script, job, job_params):
+    #TODO FUTURE default is a shit default
+    def exe_script(self, script, job, job_params, node="default", queue="default"):
         for p in job_params:
             if not job_params[p]:
                 print("[FAIL] Unset experiment parameter '%s'. Job NOT submitted." % p)
@@ -486,9 +488,9 @@ class Chitin(object):
         record.db.session.commit()
 
         commands = self.parse_script2(script, job_params)
-        self.execute(commands, run=job.uuid) #could actually get the UUID from the run_params["job_uuid"]
+        self.execute(commands, run=job.uuid, node=node, queue=queue) #could actually get the UUID from the run_params["job_uuid"]
 
-    def execute(self, command_set, run=None):
+    def execute(self, command_set, run=None, node="default", queue="default"):
         event_group = util.add_command_block(run)
         last_uuid = None
         for command_i, command in enumerate(command_set):
@@ -502,7 +504,7 @@ class Chitin(object):
             last_uuid = cmd.uuid
 
             # Add to queue
-            util.queue_command(cmd.uuid, queue="default", client=self.client_uuid)
+            util.queue_command(cmd.uuid, node=node, queue=queue, client=self.client_uuid)
 
     def parse_script2(self, path, param_d):
         def check_line(line):
