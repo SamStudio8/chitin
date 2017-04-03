@@ -189,6 +189,12 @@ def set_command_return_code(cmd_uuid, return_code):
     cmd.return_code = return_code
     record.db.session.commit()
 
+def unclaim_command(cmd_uuid):
+    cmd = get_command_by_uuid(cmd_uuid)
+    cmd.position += 1
+    cmd.claimed = False
+    record.db.session.commit()
+
 ################################################################################
 def check_integrity_set2(path_set, skip_check=False):
     """Check the hash integrity of a set of filesystem paths"""

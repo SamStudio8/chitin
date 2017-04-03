@@ -336,9 +336,7 @@ class ChitinDaemon(object):
                     cmd_uuid = block.uuid
                     if block.blocked_by is not None:
                         if block.blocked_by.uuid not in completed_uuid:
-                            block.position += 1
-                            block.claimed = False
-                            record.db.session.commit()
+                            util.unclaim_command(block.uuid)
                             continue
 
                     process_dict[cmd_uuid] = Process(target=ChitinDaemon.run_command,
