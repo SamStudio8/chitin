@@ -1,5 +1,6 @@
 import os
 import re
+import signal
 import subprocess
 import sys
 import uuid
@@ -209,7 +210,7 @@ class ChitinDaemon(object):
         if return_code != 0:
             # Should probably still check tokens and such...
             print("[WARN] Command %s exited with non-zero code." % cmd_str)
-            block.update({"post": True, "success": False})
+            block.update({"post": True, "success": False, "removed": False})
             util.add_command_text(cmd_uuid, "stdout", stdout)
             util.add_command_text(cmd_uuid, "stderr", stderr)
             post_q.put(block)
@@ -260,7 +261,7 @@ class ChitinDaemon(object):
         util.add_uuid_cmd_str(cmd_uuid, uuid_cmd_str)
         util.add_command_meta(cmd_uuid, meta)
 
-        block.update({"post": True, "success": True})
+        block.update({"post": True, "success": True, "removed": False})
         post_q.put(block)
 
     @staticmethod
@@ -284,17 +285,21 @@ class ChitinDaemon(object):
                         break
 
                     cmd_uuid = block["uuid"]
-                    process_dict[cmd_uuid].terminate()
+
+                    if not block["removed"]:
+                        process_dict[cmd_uuid].terminate()
+                        del process_dict[cmd_uuid]
 
                     if SHELL_MODE:
                         result_q.put(block)
-                    del process_dict[cmd_uuid]
+
                     completed_uuid.add(cmd_uuid)
-                    uuids_remaining -= 1
                     DONE_ANYTHING = True
 
-                    if block["cmd_block"]["blocked_by_uuid"]:
-                        completed_uuid.remove(block["cmd_block"]["blocked_by_uuid"])
+                    if not block["removed"]:
+                        if block["cmd_block"]["blocked_by_uuid"]:
+                            completed_uuid.remove(block["cmd_block"]["blocked_by_uuid"])
+                        uuids_remaining -= 1
 
                     # Any additional post command duties
                     util.set_command_return_code(cmd_uuid, block["return_code"])
@@ -348,7 +353,7 @@ class ChitinDaemon(object):
                     sleep(1)
         except Exception as e:
             print("[DEAD] Fatal error occurred during command orchestration. The daemon has terminated.")
-            print(e)
+            raise
             return
         finally:
             cmd_q.close()
@@ -357,6 +362,11 @@ class ChitinDaemon(object):
 
     @staticmethod
     def run_command(block, output_q):
+        def preexec_function():
+            # http://stackoverflow.com/questions/5045771/python-how-to-prevent-subprocesses-from-receiving-ctrl-c-control-c-sigint <3
+            # Ignore the SIGINT signal by setting the handler to the standard signal handler SIG_IGN
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+
         # Check whether files have been altered outside of environment before proceeding
         for failed in util.check_integrity_set2(block["wd"] | block["wf"], skip_check=block["skip_integrity"]):
                 print("[WARN] '%s' has been modified outside of lab book." % failed)
@@ -368,6 +378,7 @@ class ChitinDaemon(object):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=dict(os.environ).update(block["env_vars"]),
+                preexec_fn = preexec_function,
         )
         stdout, stderr = proc.communicate()
         end_clock = datetime.now()
@@ -403,9 +414,32 @@ class Chitin(object):
 
         self.show_stderr=False
 
+        signal.signal(signal.SIGINT, self.signal_handler)
         self.daemon = Process(target=ChitinDaemon.orchestrate,
             args=(self.cmd_q, self.out_q, self.post_q, self.result_q, MAX_PROC, RES_PROC, SHELL_MODE))
         self.daemon.start()
+
+
+    def signal_handler(self, signal, frame):
+        #TODO ew
+        if frame.f_code.co_name != "orchestrate":
+            return
+
+        # Purge uncompleted jobs from cmd_q
+        try:
+            count = 0
+            while True:
+                block = self.cmd_q.get_nowait()
+                block.update({"post": True, "success": False, "removed": True})
+                block["return_code"] = 128
+                self.post_q.put(block)
+                count += 1
+        except Exception:
+            print("Purged %d jobs." % count)
+
+        # Wait for running jobs to complete
+        print("Waiting for remaining jobs to complete.")
+        print("chitin should die automatically.")
 
     def queue_command(self, cmd_uuid, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, blocked_by, self_flags):
 

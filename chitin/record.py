@@ -213,6 +213,9 @@ class ResourceCommandMeta(db.Model):
         self.key = key
         self.value = str(value)
 
+class CommandQueue(db.Model):
+    pass
+
 class Command(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
     cmd = db.Column(db.String(512))
@@ -223,15 +226,18 @@ class Command(db.Model):
     block_id = db.Column(db.Integer, db.ForeignKey('command_block.id'))
     block = db.relationship('CommandBlock', backref=db.backref('commands', lazy='dynamic'))
 
+    queue_id = db.Column(db.Integer, db.ForeignKey('command_queue.id'))
+    queue = db.relationship('CommandQueue', backref=db.backref('commands', lazy='dynamic'))
+
     return_code = db.Column(db.Integer)
 
-    def __init__(self, cmd_str, cmd_block):
+    def __init__(self, cmd_str, cmd_block, return_code=-1):
         self.uuid = str(uuid.uuid4())
         self.cmd = cmd_str
         self.user = getpass.getuser()
         self.timestamp = datetime.datetime.now()
         self.block = cmd_block
-        self.return_code = -1
+        self.return_code = return_code
 
 class ResourceCommand(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)

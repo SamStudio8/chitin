@@ -72,6 +72,12 @@
                 </tbody>
             </table>
         {% endif %}
+        {% if command.return_code != -1 and command.return_code != 0 %}
+            <div class="failure" style="margin-bottom: 15px;">
+                <b>Return Code</b>
+                {{ command.return_code }}
+            </div>
+        {% endif %}
         </div>
     {% endfor %}
     </div>

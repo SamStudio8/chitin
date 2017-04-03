@@ -46,7 +46,7 @@ def get_resource_by_uuid(uuid):
         return None
     return resource
 
-def add_file_record2(path, cmd_str, status, cmd_uuid=None, new_path=None):
+def add_file_record2(path, cmd_str, status, cmd_uuid=None, new_path=None, metacommand=False):
     resource = get_resource_by_path(path)
     if not resource:
         new_hash = hashfile(path)
@@ -63,10 +63,13 @@ def add_file_record2(path, cmd_str, status, cmd_uuid=None, new_path=None):
         # There is always one, except for (?)
         cmd = get_command_by_uuid(cmd_uuid)
     else:
+        return_code = None
+        if metacommand:
+            return_code = 0
         block = add_command_block(0)
         record.db.session.add(block)
         record.db.session.commit()
-        cmd = add_command(cmd_str, block)
+        cmd = add_command(cmd_str, block, return_code=return_code)
         record.db.session.add(cmd)
         record.db.session.commit()
 
@@ -93,8 +96,8 @@ def add_command_block(run_uuid, job=None):
     record.db.session.commit()
     return command_block
 
-def add_command(cmd_str, cmd_block):
-    cmd = record.Command(cmd_str, cmd_block)
+def add_command(cmd_str, cmd_block, return_code=-1):
+    cmd = record.Command(cmd_str, cmd_block, return_code=return_code)
     record.db.session.add(cmd)
     record.db.session.commit()
     return cmd
@@ -184,14 +187,14 @@ def check_integrity2(path, skip_hash=False):
             if resource:
                 # Path exists and we knew about it
                 if not check_hash_integrity(abspath):
-                    add_file_record2(abspath, "MODIFIED by (?)", 'M')
+                    add_file_record2(abspath, "MODIFIED by (?)", 'M', metacommand=True)
                     broken_integrity = True
             else:
                 # Path exists but it is a surprise
-                add_file_record2(abspath, "CREATED by (?)", 'C')
+                add_file_record2(abspath, "CREATED by (?)", 'C', metacommand=True)
                 broken_integrity = True
         elif path_record:
-            add_file_record2(abspath, "DELETED by (?)", 'D')
+            add_file_record2(abspath, "DELETED by (?)", 'D', metacommand=True)
             broken_integrity = True
     return broken_integrity
 

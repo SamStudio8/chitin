@@ -32,6 +32,11 @@ def resource_detail(resource):
     ghosts = util.get_ghosts_by_path(resource.current_path, uuid=resource.uuid)
     return render_template('resource.html', resource=resource, ghosts=ghosts)
 
+@record.app.route('/live')
+def live():
+    current_queue = record.Command.query.filter(record.Command.return_code == -1)
+    return render_template('live.html', current_queue=current_queue)
+
 @record.app.route('/search')
 def search():
     query = request.args.get('search')
