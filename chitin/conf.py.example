@@ -1,6 +1,6 @@
 import record
 
-node1 = record.Node("default", "My Node")
+node1 = record.Node("default", "default.example.com", "My Node")
 record.db.session.add(node1)
 record.db.session.commit()
 

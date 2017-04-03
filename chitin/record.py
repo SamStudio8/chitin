@@ -119,11 +119,13 @@ class Job(db.Model):
 class Node(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
     name = db.Column(db.String(64))
+    url = db.Column(db.String(64))
     description = db.Column(db.String(64))
 
-    def __init__(self, name, desc):
+    def __init__(self, name, url, desc):
         self.uuid = str(uuid.uuid4())
         self.name = name
+        self.url = url
         self.description = desc
 
 
