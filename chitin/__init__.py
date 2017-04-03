@@ -1,5 +1,6 @@
 import os
 import re
+import signal
 import subprocess
 import sys
 import uuid
@@ -59,33 +60,33 @@ def history(file_path):
         else:
             print("No such path.")
     else:
-        print f.path
+        print f.current_path
         event_sets = {
-            "actions": f.events.filter(record.ItemEvent.result_type!='U'),
-            "usage": f.events.filter(record.ItemEvent.result_type=='U')
+            "actions": f.commands.filter(record.ResourceCommand.status != 'U'),
+            "usage": f.commands.filter(record.ResourceCommand.status == 'U')
         }
 
         for e_set in ["actions", "usage"]:
             print e_set.upper()
             for j in event_sets[e_set]:
                 print "{}\t{}\t{}\t{}\t{}".format(
-                    j.event.timestamp.strftime("%c"),
-                    j.event.user,
+                    j.command.timestamp.strftime("%c"),
+                    j.command.user,
                     j.hash,
-                    j.result_type,
-                    j.event.cmd,
+                    j.status,
+                    j.command.cmd,
                 )
-                for m in j.event.meta.all():
+                for m in j.command.meta.all():
                     print "{}{}\t{}\t{}".format(
                         " " * 80,
                         m.category,
                         m.key,
                         m.value
                     )
-                for m in j.event.items.all():
+                for m in j.command.resources.all():
                     print "{}{}\t{}".format(
                         " " * 80,
-                        m.item.path,
+                        m.resource.current_path,
                         m.hash,
                     )
             print ""
@@ -201,16 +202,17 @@ class ChitinDaemon(object):
         return_code = block["return_code"]
         cmd_str = block["cmd_block"]["cmd"]
         cmd_uuid = block["cmd_block"]["uuid"]
-        event_group_id = block["cmd_block"]["group"]
         input_meta = block["cmd_block"]["input_meta"]
 
         watched_dirs = block["cmd_block"]["wd"]
         watched_files = block["cmd_block"]["wf"]
 
-        if return_code > 0:
+        if return_code != 0:
             # Should probably still check tokens and such...
             print("[WARN] Command %s exited with non-zero code." % cmd_str)
-            block.update({"post": True, "success": False})
+            block.update({"post": True, "success": False, "removed": False})
+            util.add_command_text(cmd_uuid, "stdout", stdout)
+            util.add_command_text(cmd_uuid, "stderr", stderr)
             post_q.put(block)
             return
 
@@ -219,7 +221,7 @@ class ChitinDaemon(object):
 
         # Update field tokens
         fields = cmd_str.split(" ")
-        token_p = util.parse_tokens(fields, env_vars, ignore_parents=block["cmd_block"]["ignore_parents"])
+        token_p = util.parse_tokens(fields, env_vars)
         new_dirs = token_p["dirs"] - watched_dirs
         new_files = token_p["files"] - watched_files
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
@@ -234,26 +236,32 @@ class ChitinDaemon(object):
         meta["run"] = run_meta
 
         # Look for changes
-        status = util.check_status_path_set(watched_dirs | watched_files | new_files | new_dirs)
+        #TODO This is gross
+        status = util.check_status_set2(watched_dirs | watched_files | new_files | new_dirs)
         if status["codes"]["U"] != sum(status["codes"].values()):
-            print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["dirs"].items(), key=lambda s: s[0]) if v!='U']))
             print("\n".join(["%s\t%s" % (v, k) for k,v in sorted(status["files"].items(), key=lambda s: s[0]) if v!='U']))
-            for path, status_code in status["dirs"].items() + status["files"].items():
+            for path, status_code in status["files"].items():
                 usage = False
                 if status_code == "U":
                     usage = True
                     if path not in fields:
                         continue
-                util.add_file_record(path, cmd_str, status=status_code, meta=meta, uuid=cmd_uuid, group_id=event_group_id)
+                util.add_file_record2(path, cmd_str, cmd_uuid=cmd_uuid, status=status_code)
+
+            for orig_path, new_path in status["moves"].items():
+                print("*\t%s -> %s" % (orig_path, new_path))
+                util.add_file_record2(orig_path, cmd_str, cmd_uuid=cmd_uuid, status='V', new_path=new_path)
 
         # Terrible way to run filetype handlers
-        util.check_integrity_set(watched_files | new_files, file_tokens=token_p["files"], skip_check=block["cmd_block"]["skip_integrity"])
+        util.check_integrity_set2(watched_files | new_files, skip_check=block["cmd_block"]["skip_integrity"])
 
-        #message = "%s (%s): %d files changed, %d created, %d deleted." % (
-        #        cmd_str, run_meta["wall"], status["f_codes"]["M"], status["f_codes"]["C"], status["f_codes"]["D"]
-        #)
+        # Pretty hacky way to get the UUID cmd str
+        token_p = util.parse_tokens(fields, env_vars, insert_uuids=True)
+        uuid_cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
+        util.add_uuid_cmd_str(cmd_uuid, uuid_cmd_str)
+        util.add_command_meta(cmd_uuid, meta)
 
-        block.update({"post": True, "success": True})
+        block.update({"post": True, "success": True, "removed": False})
         post_q.put(block)
 
     @staticmethod
@@ -277,17 +285,24 @@ class ChitinDaemon(object):
                         break
 
                     cmd_uuid = block["uuid"]
-                    process_dict[cmd_uuid].terminate()
+
+                    if not block["removed"]:
+                        process_dict[cmd_uuid].terminate()
+                        del process_dict[cmd_uuid]
 
                     if SHELL_MODE:
                         result_q.put(block)
-                    del process_dict[cmd_uuid]
+
                     completed_uuid.add(cmd_uuid)
-                    uuids_remaining -= 1
                     DONE_ANYTHING = True
 
-                    if block["cmd_block"]["blocked_by_uuid"]:
-                        completed_uuid.remove(block["cmd_block"]["blocked_by_uuid"])
+                    if not block["removed"]:
+                        if block["cmd_block"]["blocked_by_uuid"]:
+                            completed_uuid.remove(block["cmd_block"]["blocked_by_uuid"])
+                        uuids_remaining -= 1
+
+                    # Any additional post command duties
+                    util.set_command_return_code(cmd_uuid, block["return_code"])
 
                 # Now try to check whether there's room to run some post-handles
                 if len(process_dict) < (MAX_PROC+RES_PROC):
@@ -338,7 +353,7 @@ class ChitinDaemon(object):
                     sleep(1)
         except Exception as e:
             print("[DEAD] Fatal error occurred during command orchestration. The daemon has terminated.")
-            print(e)
+            raise
             return
         finally:
             cmd_q.close()
@@ -347,13 +362,14 @@ class ChitinDaemon(object):
 
     @staticmethod
     def run_command(block, output_q):
-        # Check whether files have been altered outside of environment before proceeding
-        for failed in util.check_integrity_set(block["wd"] | block["wf"], file_tokens=block["tokens"]["files"], skip_check=block["skip_integrity"]):
-                print("[WARN] '%s' has been modified outside of lab book." % failed)
+        def preexec_function():
+            # http://stackoverflow.com/questions/5045771/python-how-to-prevent-subprocesses-from-receiving-ctrl-c-control-c-sigint <3
+            # Ignore the SIGINT signal by setting the handler to the standard signal handler SIG_IGN
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
 
-        # Check whether any named files have results (usages) attached to files that
-        # haven't been signed off...?
-        pass
+        # Check whether files have been altered outside of environment before proceeding
+        for failed in util.check_integrity_set2(block["wd"] | block["wf"], skip_check=block["skip_integrity"]):
+                print("[WARN] '%s' has been modified outside of lab book." % failed)
 
         start_clock = datetime.now()
         proc = subprocess.Popen(
@@ -362,6 +378,7 @@ class ChitinDaemon(object):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=dict(os.environ).update(block["env_vars"]),
+                preexec_fn = preexec_function,
         )
         stdout, stderr = proc.communicate()
         end_clock = datetime.now()
@@ -385,7 +402,6 @@ class Chitin(object):
         self.skip_integrity = False
         self.suppress = False
         self.ignore_dot = False
-        self.ignore_parents = False
 
         self.cmd_q = Queue()
         self.out_q = Queue()
@@ -398,15 +414,38 @@ class Chitin(object):
 
         self.show_stderr=False
 
+        signal.signal(signal.SIGINT, self.signal_handler)
         self.daemon = Process(target=ChitinDaemon.orchestrate,
             args=(self.cmd_q, self.out_q, self.post_q, self.result_q, MAX_PROC, RES_PROC, SHELL_MODE))
         self.daemon.start()
 
-    def queue_command(self, cmd_uuid, group_id, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, blocked_by, self_flags):
+
+    def signal_handler(self, signal, frame):
+        #TODO ew
+        if frame.f_code.co_name != "orchestrate":
+            return
+
+        # Purge uncompleted jobs from cmd_q
+        try:
+            count = 0
+            while True:
+                block = self.cmd_q.get_nowait()
+                block.update({"post": True, "success": False, "removed": True})
+                block["return_code"] = 128
+                self.post_q.put(block)
+                count += 1
+        except Exception:
+            print("Purged %d jobs." % count)
+
+        # Wait for running jobs to complete
+        print("Waiting for remaining jobs to complete.")
+        print("chitin should die automatically.")
+
+    def queue_command(self, cmd_uuid, cmd_str, env_vars, watch_dirs, watch_files, input_meta, tokens, blocked_by, self_flags):
+
         self.cmd_q.put({
             "uuid": cmd_uuid,
             "blocked_by_uuid": blocked_by,
-            "group": group_id,
             "cmd": cmd_str,
             "env_vars": env_vars,
             "wd": watch_dirs,
@@ -414,7 +453,6 @@ class Chitin(object):
             "input_meta": input_meta,
             "tokens": tokens,
             "skip_integrity": self_flags["skip_integ"],
-            "ignore_parents": self_flags["ignore_parents"],
             "show_stderr": self_flags["show_stderr"],
         })
 
@@ -453,21 +491,41 @@ class Chitin(object):
                     print("Likely incorrect usage of '%s'" % special_cmd)
         return SKIP, command_set
 
-    def super_handle(self, command_set, dry=False, run=None):
-        self.execute(command_set, dry=dry, run=run)
+    def super_handle(self, command_set, run=None):
+        self.execute(command_set, run=run)
 
-    def execute(self, command_set, dry=False, run=None):
-        event_group_id = util.add_event_group(run)
+
+    def exe_script(self, script, job, job_params):
+        for p in job_params:
+            if not job_params[p]:
+                print("[FAIL] Unset experiment parameter '%s'. Job NOT submitted." % p)
+                return None
+
+        # TODO Should probably prevent overriding of defaults?
+        for key in job_params:
+            try:
+                p = record.ExperimentParameter.query.filter(record.ExperimentParameter.key==key)[0]
+            except IndexError:
+                continue
+            jm = record.JobMeta(job, p, job_params[key])
+            record.db.session.add(jm)
+        record.db.session.commit()
+
+        commands = self.parse_script2(script, job_params)
+        self.execute(commands, run=job.uuid) #could actually get the UUID from the run_params["job_uuid"]
+
+    def execute(self, command_set, run=None):
+        event_group = util.add_command_block(run)
         last_uuid = None
         for command_i, command in enumerate(command_set):
-            cmd_uuid = str(uuid.uuid4())
-            self.handle_command(cmd_uuid, command.split(" "), self.variables, self.meta, dry, group=event_group_id, blocked_by=last_uuid)
-            last_uuid = cmd_uuid
+            cmd = util.add_command(command, event_group)
+            self.handle_command(cmd.uuid, command.split(" "), self.variables, self.meta, blocked_by=last_uuid)
+            last_uuid = cmd.uuid
 
-    def handle_command(self, cmd_uuid, fields, env_variables, input_meta, dry=False, group=None, blocked_by=None):
-
+    #TODO FUTURE Drop cmd_uuid from here
+    def handle_command(self, cmd_uuid, fields, env_variables, input_meta, blocked_by=None):
         # Determine files and folders on which to watch for changes
-        token_p = util.parse_tokens(fields, env_variables, ignore_parents=self.ignore_parents)
+        token_p = util.parse_tokens(fields, env_variables)
         if not self.ignore_dot:
             token_p["dirs"].add(".")
         watched_dirs = token_p["dirs"]
@@ -476,21 +534,86 @@ class Chitin(object):
         # Collapse new command tokens to cmd_str and print cmd with uuid to user (before warnings)
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
-        if dry:
-            return {
-                "message": "There was no effect.",
-                "cmd_str": cmd_str
-            }
-
         ### Queue for Execution
-        self.queue_command(cmd_uuid, group, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p, blocked_by, {
+        self.queue_command(cmd_uuid, cmd_str, env_variables, watched_dirs, watched_files, input_meta, token_p, blocked_by, {
                  "skip_integ": self.skip_integrity,
-                 "ignore_parents": self.ignore_parents,
                  "show_stderr": self.show_stderr,
         })
 
+    def parse_script2(self, path, param_d):
+        def check_line(line):
+            if len(line.strip()) < 2:
+                return False
+            if line[0] == '#' and not line[1] == '@':
+                return False
+            return True
+        script_lines = [l.strip() for l in open(path).readlines() if check_line(l)]
+
+        # Split the blocks
+        blocks = []
+        current_block = []
+        in_block = False
+        input_map = {}
+        input_meta = {}
+
+        for line in script_lines:
+            if line.startswith("#@CHITIN_START_BLOCK"):
+                if len(current_block) > 0:
+                    blocks.append(current_block)
+                    current_block = []
+                else:
+                    in_block = True
+
+            elif line.startswith("#@CHITIN_END_BLOCK"):
+                if len(current_block) > 0:
+                    blocks.append(current_block)
+                    current_block = []
+                in_block = False
+
+            elif line.startswith("#@CHITIN_INPUT"):
+                # Map the parameter name (defined in the script) to its dollar number
+                # We will replace all $N with the value from param_d with the matching key
+                v_fields = line.split(" ")
+                input_map[v_fields[2]] = int(v_fields[1])
+
+            elif line.startswith("#@CHITIN_META"):
+                v_fields = line.split(" ")
+                try:
+                    input_meta[v_fields[1]] = v_fields[2]
+                except IndexError:
+                    pass
+
+            else:
+                if in_block:
+                    current_block.append(line)
+                else:
+                    # Not currently in a block, so just make a new block with the current line
+                    blocks.append([line])
+
+        meta = {"script": {"path": path}}
+        fixed_blocks = []
+        for b in blocks:
+            BLOCK_COMMAND = "; ".join(b)
+
+            # Blindly replace variables using the parameter dictionary
+            for param_name, param_value in param_d.items():
+                try:
+                    # Look up which dollar number to replace in the bash script
+                    BLOCK_COMMAND = BLOCK_COMMAND.replace("$" + str(input_map[param_name]), str(param_value))
+                    meta["script"][param_name] = param_value
+                except KeyError:
+                    pass
+            fixed_blocks.append(BLOCK_COMMAND)
+
+        meta["script"].update(input_meta)
+
+        self.meta.update(meta)
+        return fixed_blocks
 
     def parse_script(self, path, *tokens):
+        print("[WARN] parse_script is deprecated, use parse_script2 instead.")
+        print("       parse_script2 accepts a dictionary of named parameters")
+        print("       parse_script will wrap parse_script2 eventually without further notice")
         def check_line(line):
             if len(line.strip()) < 2:
                 return False
@@ -580,6 +703,10 @@ def shell():
     print(WELCOME)
     message = VERSION
 
+    project = util.register_or_fetch_project("Shell Sessions")
+    exp = util.register_experiment(os.path.abspath('.'), project, name="Shell Session @ %s" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"), shell=True)
+    run, params = util.register_job(exp.uuid)
+
     def get_bottom_toolbar_tokens(cli):
         return [(Token.Toolbar, ' '+message)]
 
@@ -591,7 +718,7 @@ def shell():
 
     # Check whether files in and around the current directory have been changed...
     print("Performing opening integrity check...")
-    for failed in util.check_integrity_set(set(".")):
+    for failed in util.check_integrity_set2(set(".")):
         print("[WARN] '%s' has been modified outside of lab book." % failed)
     try:
         skip = False
@@ -632,7 +759,7 @@ def shell():
             if len(special_command_set) > 0:
                 command_set = special_command_set
 
-            c.execute(command_set)
+            c.execute(command_set, run=run.uuid)
 
     except EOFError:
         print("Bye!")

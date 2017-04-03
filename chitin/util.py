@@ -15,10 +15,264 @@ from cmd import attempt_parse_type, attempt_integrity_type
 def get_file_record(path):
     path = os.path.abspath(path)
     try:
-        item = record.Item.query.filter(record.Item.path==path)[0]
+        item = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==False)[0]
     except IndexError:
         return None
     return item
+
+def get_resource_by_path(path):
+    path = os.path.abspath(path)
+    try:
+        resource = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==False)[0]
+    except IndexError:
+        return None
+    return resource
+
+def get_ghosts_by_path(path, uuid=None):
+    path = os.path.abspath(path)
+    try:
+        if uuid:
+            resources = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==True, record.Resource.uuid!=uuid)
+        else:
+            resources = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==True)
+    except IndexError:
+        return None
+    return resources
+
+def get_resource_by_uuid(uuid):
+    try:
+        resource = record.Resource.query.filter(record.Resource.uuid==uuid)[0]
+    except IndexError:
+        return None
+    return resource
+
+def add_file_record2(path, cmd_str, status, cmd_uuid=None, new_path=None, metacommand=False):
+    resource = get_resource_by_path(path)
+    if not resource:
+        new_hash = hashfile(path)
+        resource = record.Resource(path, new_hash)
+        record.db.session.add(resource)
+        record.db.session.commit()
+    else:
+        try:
+            new_hash = hashfile(path)
+        except:
+            new_hash = None
+
+    if cmd_uuid:
+        # There is always one, except for (?)
+        cmd = get_command_by_uuid(cmd_uuid)
+    else:
+        return_code = None
+        if metacommand:
+            return_code = 0
+        block = add_command_block(0)
+        record.db.session.add(block)
+        record.db.session.commit()
+        cmd = add_command(cmd_str, block, return_code=return_code)
+        record.db.session.add(cmd)
+        record.db.session.commit()
+
+    if cmd:
+        resource_command = record.ResourceCommand(resource, cmd, status, h=new_hash, new_path=new_path)
+        record.db.session.add(resource_command)
+
+        meta = attempt_parse_type(path)
+        if meta:
+            for key, value in meta.items():
+                record.db.session.add(record.ResourceCommandMeta(resource_command, "handler", key, value))
+
+    record.db.session.commit()
+
+
+def add_command_block(run_uuid, job=None):
+    run = None
+    try:
+        run = record.Job.query.filter(record.Job.uuid==str(run_uuid))[0]
+    except IndexError as e:
+        pass
+    command_block = record.CommandBlock(job_uuid=run)
+    record.db.session.add(command_block)
+    record.db.session.commit()
+    return command_block
+
+def add_command(cmd_str, cmd_block, return_code=-1):
+    cmd = record.Command(cmd_str, cmd_block, return_code=return_code)
+    record.db.session.add(cmd)
+    record.db.session.commit()
+    return cmd
+
+def get_command_by_uuid(uuid):
+    cmd = None
+    try:
+        cmd = record.Command.query.filter(record.Command.uuid==str(uuid))[0]
+    except IndexError as e:
+        pass
+    return cmd
+
+def add_uuid_cmd_str(cmd_uuid, uuid_cmd_str):
+    cmd = get_command_by_uuid(cmd_uuid)
+    cmd.cmd_uuid_str = uuid_cmd_str
+    record.db.session.commit()
+
+def add_command_text(cmd_uuid, key, text):
+    if len(text) == 0:
+        return
+    cmd = get_command_by_uuid(cmd_uuid)
+    ctxt = record.CommandText(cmd, key, text)
+    record.db.session.add(ctxt)
+    record.db.session.commit()
+
+def add_command_meta(cmd_uuid, meta_d):
+    cmd = get_command_by_uuid(cmd_uuid)
+    for meta_cat in meta_d:
+        for key, value in meta_d[meta_cat].items():
+            record.db.session.add(record.CommandMeta(cmd, meta_cat, key, value))
+    record.db.session.commit()
+
+def set_command_return_code(cmd_uuid, return_code):
+    cmd = get_command_by_uuid(cmd_uuid)
+    cmd.return_code = return_code
+    record.db.session.commit()
+
+################################################################################
+def check_integrity_set2(path_set, skip_check=False):
+    """Check the hash integrity of a set of filesystem paths"""
+    failed = []
+
+    for resource_path in path_set:
+        resource_path = os.path.abspath(resource_path)
+
+        if os.path.isfile(resource_path):
+            if check_integrity2(resource_path, skip_hash=skip_check):
+                failed.append(resource_path)
+            if skip_check:
+                continue
+
+        elif os.path.isdir(resource_path):
+            for subitem in os.listdir(resource_path):
+                i_abspath = os.path.join(resource_path, subitem)
+                if os.path.isdir(i_abspath):
+                    for subsubitem in os.listdir(i_abspath):
+                        j_abspath = os.path.join(i_abspath, subsubitem)
+                        if j_abspath in path_set:
+                            continue
+                        if os.path.isfile(j_abspath):
+                            if check_integrity2(j_abspath):
+                                failed.append(j_abspath)
+                elif os.path.isfile(i_abspath):
+                    #TODO Do we want to keep a record of the files of subfolders?
+                    if i_abspath in path_set:
+                        continue
+                    if check_integrity2(i_abspath):
+                        failed.append(i_abspath)
+
+    return sorted(failed)
+
+
+def check_integrity2(path, skip_hash=False):
+    abspath = os.path.abspath(path)
+    broken_integrity = False
+
+    if skip_hash:
+        if os.path.exists(abspath):
+            if os.path.isfile(abspath):
+                check_rules_integrity(path)
+    else:
+        resource = get_resource_by_path(abspath)
+        if os.path.exists(abspath):
+            if os.path.isfile(abspath):
+                check_rules_integrity(path)
+
+            if resource:
+                # Path exists and we knew about it
+                if not check_hash_integrity(abspath):
+                    add_file_record2(abspath, "MODIFIED by (?)", 'M', metacommand=True)
+                    broken_integrity = True
+            else:
+                # Path exists but it is a surprise
+                add_file_record2(abspath, "CREATED by (?)", 'C', metacommand=True)
+                broken_integrity = True
+        elif path_record:
+            add_file_record2(abspath, "DELETED by (?)", 'D', metacommand=True)
+            broken_integrity = True
+    return broken_integrity
+
+
+def check_hash_integrity(path):
+    """Check whether the given path has a different hash from the one currently
+    stored in the database. Returns False if the file's integrity is broken."""
+    abspath = os.path.abspath(path)
+    now_hash = hashfile(abspath)
+    resource = get_resource_by_path(abspath)
+    return now_hash == resource.current_hash
+
+def check_rules_integrity(path):
+    """Check whether the given path violates any rules associated with its type.
+    Returns False if the file has broken at least one rule."""
+    abspath = os.path.abspath(path)
+    broken_rules = {}
+
+    broken_rules = attempt_integrity_type(abspath)
+    for rule, result in broken_rules.items():
+        if not result and result is not None:
+            print "[WARN] %s %s" % (path, rule[1])
+    return len(broken_rules) == 0
+
+def check_status_set2(path_set):
+    file_statii = {}
+    codes = {"C": 0, "M": 0, "D": 0, "U": 0, "V": 0}
+    hashes = {}
+    moves = {}
+
+    for item in path_set:
+        item = os.path.abspath(item)
+        if not os.path.exists(item):
+            stat = get_status(item)
+            file_statii[item] = stat[0]
+            hashes[item] = (stat[1], stat[2])
+
+        if os.path.isdir(item):
+            stat = get_status(item)
+            hashes[item] = (stat[1], stat[2])
+
+            for subitem in os.listdir(item):
+                i_abspath = os.path.join(item, subitem)
+                if os.path.isdir(i_abspath):
+                    pass
+                else:
+                    #TODO Do we want to keep a record of the files of untargeted subfolders?
+                    stat = get_status(i_abspath)
+                    file_statii[i_abspath] = stat[0]
+                    hashes[i_abspath] = (stat[1], stat[2])
+        elif os.path.isfile(item):
+            stat = get_status(item)
+            file_statii[item] = stat[0]
+            hashes[item] = (stat[1], stat[2])
+
+    #TODO Naive move checking
+    for deleted_f in [f for f in file_statii if file_statii[f] == "D"]:
+        for created_f in [f for f in file_statii if file_statii[f] == "C"]:
+            if hashes[deleted_f][1] == hashes[created_f][0]:
+                # Deleted file was moved (probably)!
+                moves[deleted_f] = created_f
+                codes["V"] += 1
+                del file_statii[deleted_f]
+                del file_statii[created_f]
+                break
+
+    for s in file_statii.values():
+        codes[s] += 1
+
+    return {
+        "files": file_statii,
+        "codes": codes,
+        "hashes": hashes,
+        "moves": moves,
+    }
+
+################################################################################
+
 
 def get_status(path, cmd_str=""):
     abspath = os.path.abspath(path)
@@ -31,16 +285,16 @@ def get_status(path, cmd_str=""):
         if os.path.isfile(abspath):
             h = hashfile(abspath)
         elif os.path.isdir(abspath):
-            h = hashfiles([os.path.join(abspath,f) for f in os.listdir(abspath) if os.path.isfile(os.path.join(abspath,f))])
+            h = None
 
         if path_record:
             try:
-                last_h = path_record.get_last_digest()
+                last_h = path_record.current_hash
             except IndexError:
                 pass
 
             # Path exists and we knew about it
-            if path_record.get_last_digest() != h:
+            if path_record.current_hash != h:
                 status = "M"
             else:
                 status = "U"
@@ -48,137 +302,13 @@ def get_status(path, cmd_str=""):
             # Path exists but it is a surprise
             status = "C"
     elif path_record:
-        last_h = path_record.get_last_digest()
+        last_h = path_record.current_hash
         status = "D"
 
     return (status, h, last_h)
 
-def add_event_group(run_uuid):
-    run = None
-    try:
-        run = record.Run.query.filter(record.Run.uuid==str(run_uuid))[0]
-    except IndexError as e:
-        pass
-    event_group = record.EventGroup(run=run)
-    record.db.session.add(event_group)
-    record.db.session.commit()
-    return event_group.id
-
-
-def add_file_record(path, cmd_str, status=False, parent=None, meta=None, uuid=None, group_id=None):
-    item = get_file_record(path)
-    if not item:
-        item = record.Item(path)
-        record.db.session.add(item)
-        record.db.session.commit()
-
-    event = None
-    if uuid:
-        try:
-            event = record.Event.query.filter(record.Event.uuid==str(uuid))[0]
-        except IndexError as e:
-            pass
-
-    if not event:
-        group = None
-        if group_id:
-            group = record.EventGroup.query.get(group_id)
-        event = record.Event(cmd_str, uuid, group)
-        record.db.session.add(event)
-
-        if meta:
-            for mcat in meta:
-                for key in meta[mcat]:
-                    datum = record.Metadatum(event, mcat, key, meta[mcat][key])
-                    record.db.session.add(datum)
-
-    itemevent = record.ItemEvent(item, event, status)
-    record.db.session.add(itemevent)
-
-    if status != 'D':
-        #NOTE This is a pretty hacky way of getting around accidentally handling
-        #     files that have been deleted.
-        f_meta = attempt_parse_type(item.path)
-        if f_meta:
-            for key in f_meta:
-                datum = record.Metadatum(event, item.path, key, f_meta[key])
-                record.db.session.add(datum)
-
-    record.db.session.commit()
-
-def check_integrity_set(path_set, file_tokens=None, skip_check=False):
-    if not file_tokens:
-        file_tokens = []
-    failed = []
-    for item in path_set:
-        item = os.path.abspath(item)
-        if check_integrity(item, is_token=item in file_tokens, skip_check=skip_check):
-            failed.append(item)
-        if skip_check:
-            continue
-
-        if os.path.isdir(item):
-            for subitem in os.listdir(item):
-                i_abspath = os.path.join(item, subitem)
-                if os.path.isdir(i_abspath):
-                    if check_integrity(i_abspath):
-                        failed.append(i_abspath)
-
-                    for subsubitem in os.listdir(i_abspath):
-                        j_abspath = os.path.join(i_abspath, subsubitem)
-                        if j_abspath in path_set:
-                            continue
-                        if os.path.isfile(j_abspath):
-                            if check_integrity(j_abspath, is_token=j_abspath in file_tokens):
-                                failed.append(j_abspath)
-                else:
-                    #TODO Do we want to keep a record of the files of subfolders?
-                    if i_abspath in path_set:
-                        continue
-                    if check_integrity(i_abspath, is_token=i_abspath in file_tokens):
-                        failed.append(i_abspath)
-    return sorted(failed)
-
-def check_integrity(path, is_token=False, skip_check=False):
-    abspath = os.path.abspath(path)
-    broken_integrity = False
-    broken_rules = {}
-
-    if skip_check:
-        if os.path.exists(abspath):
-            if os.path.isfile(abspath):
-                broken_rules = attempt_integrity_type(abspath)
-    else:
-        path_record = get_file_record(abspath)
-        if os.path.exists(abspath):
-            if os.path.isfile(abspath):
-                broken_rules = attempt_integrity_type(abspath)
-                h = hashfile(abspath)
-            elif os.path.isdir(abspath):
-                h = hashfiles([os.path.join(abspath,f) for f in os.listdir(abspath) if os.path.isfile(os.path.join(abspath,f))])
-
-            if path_record:
-                # Path exists and we knew about it
-                if path_record.get_last_digest() != h:
-                    add_file_record(abspath, "MODIFIED by (?)")
-                    broken_integrity = True
-            else:
-                # Path exists but it is a surprise
-                add_file_record(abspath, "CREATED by (?)")
-                broken_integrity = True
-        elif path_record:
-            add_file_record(abspath, "DELETED by (?)")
-            broken_integrity = True
-
-    #TODO I don't want this here but I can't be bothered to move it right now
-    if is_token:
-        for rule, result in broken_rules.items():
-            if not result and result is not None:
-                print "[WARN] %s %s" % (path, rule[1])
-
-    return broken_integrity
-
-def parse_tokens(fields, env_vars, ignore_parents=False):
+###############################################################################
+def parse_tokens(fields, env_vars, insert_uuids=False):
     dirs_l = []
     file_l = []
     for field_i, field in enumerate(fields):
@@ -191,29 +321,31 @@ def parse_tokens(fields, env_vars, ignore_parents=False):
         if field[-1] == ";":
             had_semicolon = True
             field = field.replace(";", "")
+
+        if field.startswith("chitin://"):
+            resource = get_resource_by_uuid(field.split("chitin://")[1])
+            if resource:
+                field = resource.current_path
         abspath = os.path.abspath(field)
 
         # Does the path exist? We might want to add its parent directory
         if os.path.exists(abspath):
-            if had_semicolon:
-                fields[field_i] = abspath + ';' # Update the command to use the full abspath
-            else:
-                fields[field_i] = abspath # Update the command to use the full abspath
+            field_ = abspath
+            if insert_uuids:
+                resource = get_resource_by_path(field_)
+                if resource:
+                    field_ = "chitin://" + str(resource.uuid)
 
-            if not ignore_parents:
-                dirs_l.append(os.path.dirname(abspath))
+            if had_semicolon:
+                fields[field_i] = field_ + ';' # Update the command to use the full abspath
+            else:
+                fields[field_i] = field_ # Update the command to use the full abspath
         else:
-            potential_dir = os.path.dirname(abspath)
-            if os.path.exists(potential_dir) and not ignore_parents:
-                dirs_l.append(potential_dir)
             continue
 
         ### Files
         if os.path.isfile(abspath):
             file_l.append(abspath)
-
-            if not ignore_parents:
-                dirs_l.append(os.path.dirname(abspath))
 
         ### Dirs
         elif os.path.isdir(abspath):
@@ -244,99 +376,68 @@ def hashfile(path, halg=hashlib.md5, bs=65536):
     f.close()
     return halg.hexdigest()
 
-def hashfiles(paths, halg=hashlib.md5, bs=65536):
-    tot_halg = halg()
-    for path in sorted(paths):
-        tot_halg.update(hashfile(path, halg=halg, bs=bs))
-    return tot_halg.hexdigest()
+################################################################################
+def register_or_fetch_project(name):
+    try:
+        project = record.Project.query.filter(record.Project.name == name)[0]
+    except IndexError:
+        project = record.Project(name)
+        record.db.session.add(project)
+        record.db.session.commit()
+    return project
 
-def check_status_path_set(path_set):
-    dir_statii = {}
-    file_statii = {}
-    dir_codes = {"C": 0, "M": 0, "D": 0, "U": 0}
-    file_codes = {"C": 0, "M": 0, "D": 0, "U": 0}
-    codes = {"C": 0, "M": 0, "D": 0, "U": 0}
-    hashes = {}
-
-    for item in path_set:
-        item = os.path.abspath(item)
-        if not os.path.exists(item):
-            stat = get_status(item)
-            file_statii[item] = stat[0]
-            hashes[item] = (stat[1], stat[2])
-
-        if os.path.isdir(item):
-            stat = get_status(item)
-            dir_statii[item] = stat[0]
-            hashes[item] = (stat[1], stat[2])
-
-            for subitem in os.listdir(item):
-                i_abspath = os.path.join(item, subitem)
-                if os.path.isdir(i_abspath):
-                    stat = get_status(i_abspath)
-                    dir_statii[i_abspath] = stat[0]
-                    hashes[i_abspath] = (stat[1], stat[2])
-                else:
-                    #TODO Do we want to keep a record of the files of untargeted subfolders?
-                    stat = get_status(i_abspath)
-                    file_statii[i_abspath] = stat[0]
-                    hashes[i_abspath] = (stat[1], stat[2])
-        elif os.path.isfile(item):
-            stat = get_status(item)
-            file_statii[item] = stat[0]
-            hashes[item] = (stat[1], stat[2])
-
-    for s in dir_statii.values():
-        dir_codes[s] += 1
-        codes[s] += 1
-    for s in file_statii.values():
-        file_codes[s] += 1
-        codes[s] += 1
-
-    return {
-        "dirs": dir_statii,
-        "files": file_statii,
-        "d_codes": dir_codes,
-        "f_codes": file_codes,
-        "codes": codes,
-        "hashes": hashes,
-    }
-
-def register_experiment(path, create_dir=False):
-    exp = record.Experiment(path)
+def register_experiment(path, project, create_dir=False, params=None, name=None, shell=False):
+    exp = record.Experiment(path, project, name=name, shell=shell)
     record.db.session.add(exp)
     record.db.session.commit()
+
+    #TODO Would be nice to check whether params[p] is a Resource?
+    if params:
+        for i, p in enumerate(params):
+            #p = record.ExperimentParameter(self, p, params[p], i)
+            p = record.ExperimentParameter(exp, p, params[p])
+            record.db.session.add(p)
+        record.db.session.commit()
 
     if create_dir:
         try:
             os.mkdir(exp.get_path())
         except:
             #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
-            print("[WARN] Encountered trouble creating %s" % path)
+            print("[WARN] Encountered trouble creating %s" % exp.get_path())
     return exp
 
-def register_run(exp_uuid, create_dir=False, meta=None):
+def register_job(exp_uuid, create_dir=False):
+    exp = None
     try:
         exp = record.Experiment.query.filter(record.Experiment.uuid==str(exp_uuid))[0]
     except IndexError as e:
-        return None
+        pass
 
-    run = record.Run(exp)
-    record.db.session.add(run)
+    job_params = exp.make_params()
 
-    if meta:
-        for key in meta:
-            datum = record.RunMetadatum(run, key, meta[key])
-            record.db.session.add(datum)
-    record.db.session.commit()
+    job = record.Job(exp)
+    record.db.session.add(job)
 
+    job_path = "" # euch, this is going to cause trouble
     if create_dir:
         try:
-            os.mkdir(run.get_path())
+            os.mkdir(job.get_path())
+            job_path = job.get_path()
         except:
             #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
-            print("[WARN] Encountered trouble creating %s" % path)
-    return run
+            print("[WARN] Encountered trouble creating %s" % job.get_path())
+
+    job_params["exp_uuid"] = exp.uuid
+    job_params["job_uuid"] = job.uuid
+    job_params["job_dir"] = job_path
+    return job, job_params
+
+def register_run(exp_uuid, create_dir=False, meta=None):
+    print("[WARN] register_run is deprecated, use register_job instead")
+    print("       Note that you no longer pass parameters to register_job,")
+    print("       register_run now returns a dict for you to fill in")
+    return register_job(exp_uuid, create_dir=create_dir)
 
 def archive_experiment(exp_uuid, tar_path=None, manifest=True, new_root=None):
     import tarfile

@@ -13,6 +13,7 @@ filetype_handlers = {
     "vcf": handlers.VcfFileHandler,
     "fq": handlers.FastqFileHandler,
     "fastq": handlers.FastqFileHandler,
+    "err": handlers.ErrFileHandler,
 }
 
 def attempt_parse_type(path):

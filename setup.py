@@ -9,6 +9,7 @@ requirements = [
     "SQLAlchemy",
     "flask_sqlalchemy",
     "paramiko",
+    "pillow",
 ]
 
 test_requirements = [
