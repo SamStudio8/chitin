@@ -164,6 +164,14 @@ def get_node_by_uuid(uuid):
         pass
     return node
 
+def get_job_by_uuid(uuid):
+    job = None
+    try:
+        job = record.Job.query.filter(record.Job.uuid==str(uuid))[0]
+    except IndexError as e:
+        pass
+    return job
+
 def add_uuid_cmd_str(cmd_uuid, uuid_cmd_str):
     cmd = get_command_by_uuid(cmd_uuid)
     cmd.cmd_uuid_str = uuid_cmd_str
@@ -193,6 +201,17 @@ def unclaim_command(cmd_uuid):
     cmd = get_command_by_uuid(cmd_uuid)
     cmd.position += 1
     cmd.claimed = False
+    record.db.session.commit()
+
+def add_job_params(job_uuid, job_params):
+    job = get_job_by_uuid(job_uuid)
+    for key in job_params:
+        try:
+            p = record.ExperimentParameter.query.join(record.Experiment).filter(record.ExperimentParameter.key==key, record.Experiment.uuid == job.exp.uuid)[0]
+        except IndexError:
+            continue
+        jm = record.JobMeta(job, p, job_params[key])
+        record.db.session.add(jm)
     record.db.session.commit()
 
 ################################################################################

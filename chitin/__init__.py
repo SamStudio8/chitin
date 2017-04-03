@@ -383,14 +383,7 @@ class Chitin(object):
                 return None
 
         # TODO Should probably prevent overriding of defaults?
-        for key in job_params:
-            try:
-                p = record.ExperimentParameter.query.filter(record.ExperimentParameter.key==key)[0]
-            except IndexError:
-                continue
-            jm = record.JobMeta(job, p, job_params[key])
-            record.db.session.add(jm)
-        record.db.session.commit()
+        util.add_job_params(job_uuid, job_params)
 
         commands = self.parse_script2(script, job_params)
         self.execute(commands, run=job.uuid, node=node, queue=queue) #could actually get the UUID from the run_params["job_uuid"]
