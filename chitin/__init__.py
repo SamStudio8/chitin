@@ -5,8 +5,6 @@ import subprocess
 import sys
 import uuid
 
-import requests
-
 from datetime import datetime
 from multiprocessing import Process, Queue
 from time import sleep
@@ -96,14 +94,8 @@ special_commands = {
 class ChitinDaemon(object):
 
     @staticmethod
-    def emit(endpoint, payload, client_uuid):
-        payload['client'] = client_uuid
-        r = requests.get(endpoint, params=payload)
-        return r.json()
-
-    @staticmethod
     def handle_post(block, post_q, client_uuid):
-        command_r = ChitinDaemon.emit('http://localhost:5000/api/command/get/', {
+        command_r = util.emit('http://localhost:5000/api/command/get/', {
             'uuid': block["uuid"]
         }, client_uuid)
         cmd_uuid = command_r["uuid"]
@@ -125,13 +117,13 @@ class ChitinDaemon(object):
             # Should probably still check tokens and such...
             print("[WARN] Command %s exited with non-zero code." % cmd_str)
             block.update({"post": True, "success": False, "removed": False})
-            ChitinDaemon.emit('http://localhost:5000/api/command/add-txt/', {
+            util.emit('http://localhost:5000/api/command/update/', {
                 "uuid": cmd_uuid,
                 "text": {
                     "stdout": stdour,
                     "stderr": stderr
                 }
-            )
+            })
             post_q.put(block)
             return
 
@@ -165,11 +157,25 @@ class ChitinDaemon(object):
                     usage = True
                     if path not in fields:
                         continue
-                util.add_file_record2(path, cmd_str, cmd_uuid=cmd_uuid, status=status_code)
-
+                util.emit('http://localhost:5000/api/resource/update/', {
+                    "path": path,
+                    "cmd_str": cmd_str,
+                    "cmd_uuid": cmd_uuid,
+                    "status_code": status_code,
+                    "path_hash": util.hashfile(path),
+                    "node_uuid": record.NODE_UUID,
+                }, client_uuid)
             for orig_path, new_path in status["moves"].items():
                 print("*\t%s -> %s" % (orig_path, new_path))
-                util.add_file_record2(orig_path, cmd_str, cmd_uuid=cmd_uuid, status='V', new_path=new_path)
+                util.emit('http://localhost:5000/api/resource/update/', {
+                    "path": orig_path,
+                    "new_path": new_path,
+                    "cmd_str": cmd_str,
+                    "cmd_uuid": cmd_uuid,
+                    "status_code": 'V',
+                    "path_hash": util.hashfile(path),
+                    "node_uuid": record.NODE_UUID,
+                }, client_uuid)
 
         # Terrible way to run filetype handlers
         #util.check_integrity_set2(watched_files, skip_check=block["cmd_block"]["skip_integrity"])
@@ -178,9 +184,11 @@ class ChitinDaemon(object):
         # Pretty hacky way to get the UUID cmd str
         token_p = util.parse_tokens(fields, insert_uuids=True)
         uuid_cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
-        util.add_uuid_cmd_str(cmd_uuid, uuid_cmd_str)
-        util.add_command_meta(cmd_uuid, meta)
-
+        util.emit('http://localhost:5000/api/command/update/', {
+            "uuid": cmd_uuid,
+            "cmd_uuid_str": uuid_cmd_str,
+            "cmd_meta": meta,
+        }, client_uuid)
         block.update({"post": True, "success": True, "removed": False})
         post_q.put(block)
 
@@ -223,7 +231,10 @@ class ChitinDaemon(object):
                         uuids_remaining -= 1
 
                     # Any additional post command duties
-                    util.set_command_return_code(cmd_uuid, block["return_code"])
+                    util.emit('http://localhost:5000/api/command/update/', {
+                        "uuid": cmd_uuid,
+                        "return_code": block["return_code"],
+                    }, client_uuid)
 
                 # Now try to check whether there's room to run some post-handles
                 if len(process_dict) < (MAX_PROC+RES_PROC):
@@ -249,7 +260,7 @@ class ChitinDaemon(object):
                 if len(process_dict) < MAX_PROC and not WAIT_FOR_DONE:
 
                     #TODO FUTURE If this fails, we loop and cannot SIGINT
-                    block = ChitinDaemon.emit('http://localhost:5000/api/command/fetch/', {
+                    block = util.emit('http://localhost:5000/api/command/fetch/', {
                         'node': record.NODE_NAME,
                         'queue': 'default',
                     }, client_uuid)
@@ -283,8 +294,8 @@ class ChitinDaemon(object):
 
     @staticmethod
     def run_command(cmd_uuid, output_q, client_uuid):
-        block = ChitinDaemon.emit('http://localhost:5000/api/command/get/', {
-            'uuid': block["uuid"]
+        block = util.emit('http://localhost:5000/api/command/get/', {
+            'uuid': cmd_uuid
         }, client_uuid)
         def preexec_function():
             # http://stackoverflow.com/questions/5045771/python-how-to-prevent-subprocesses-from-receiving-ctrl-c-control-c-sigint <3
@@ -345,12 +356,6 @@ class Chitin(object):
             args=(None, self.out_q, self.post_q, self.result_q, MAX_PROC, RES_PROC, SHELL_MODE, self.client_uuid))
         self.daemon.start()
 
-
-    def emit(self, endpoint, payload):
-        #TODO FUTURE Gonna want some security here...
-        payload['client'] = self.client_uuid
-        r = requests.get(endpoint, params=payload)
-        return r.json()
 
     def signal_handler(self, signal, frame):
         #TODO ew
@@ -417,9 +422,9 @@ class Chitin(object):
         self.execute(commands, run=job.uuid, node=node, queue=queue) #could actually get the UUID from the run_params["job_uuid"]
 
     def execute(self, command_set, run=None, node="default", queue="default"):
-        cmd_block_uuid = self.emit('http://localhost:5000/api/command-block/add/', {
+        cmd_block_uuid = util.emit('http://localhost:5000/api/command-block/add/', {
             'uuid': run
-        })["uuid"]
+        }, self.client_uuid)["uuid"]
         last_uuid = None
         for command_i, command in enumerate(command_set):
             token_p = util.parse_tokens(command.split(" "))
@@ -427,20 +432,20 @@ class Chitin(object):
             # Collapse new command tokens to cmd_str
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
-            cmd_uuid = self.emit('http://localhost:5000/api/command/add/', {
+            cmd_uuid = util.emit('http://localhost:5000/api/command/add/', {
                 'cmd_str': cmd_str,
                 'cmd_block': cmd_block_uuid,
                 'blocked_by': last_uuid
-            })["uuid"]
+            }, self.client_uuid)["uuid"]
             #util.add_command_meta(cmd.uuid, self.meta) TODO -- we don't really want to repeat this experiment data for every command
             last_uuid = cmd_uuid
 
             # Add to queue
-            self.emit('http://localhost:5000/api/command/queue/', {
+            util.emit('http://localhost:5000/api/command/queue/', {
                 'cmd_uuid': cmd_uuid,
                 'node': node,
                 'queue': queue,
-            })
+            }, self.client_uuid)
 
     def parse_script2(self, path, param_d):
         def check_line(line):

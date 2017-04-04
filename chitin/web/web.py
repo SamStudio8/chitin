@@ -40,7 +40,7 @@ def live():
 
 @record.app.route('/search')
 def search():
-    query = request.args.get('search')
+    query = request.json.get('search')
 
     if record.Resource.query.get(query):
         return redirect(url_for('resource_detail', resource=query))
@@ -72,10 +72,11 @@ def chitin_filter(s):
         return s
 
 ###############################################################################
+#TODO Need to sanity check these interfaces, do they have the right params?
 
-@record.app.route('/api/command-block/add/', methods = ['GET'])
+@record.app.route('/api/command-block/add/', methods = ['POST'])
 def create_command_block():
-    run = util.get_job_by_uuid(request.args.get("uuid"))
+    run = util.get_job_by_uuid(request.json.get("uuid"))
 
     if run:
         command_block = record.CommandBlock(job_uuid=run)
@@ -87,10 +88,10 @@ def create_command_block():
         return jsonify({
         }), 201
 
-@record.app.route('/api/command/get/', methods = ['GET'])
+@record.app.route('/api/command/get/', methods = ['POST'])
 def get_command():
     try:
-        cmd = record.Command.query.filter(record.Command.uuid==str(request.args.get("uuid")))[0]
+        cmd = record.Command.query.filter(record.Command.uuid==str(request.json.get("uuid")))[0]
     except IndexError:
         cmd = None
 
@@ -109,15 +110,15 @@ def get_command():
     }), 201
 
 
-@record.app.route('/api/command/add/', methods = ['GET'])
+@record.app.route('/api/command/add/', methods = ['POST'])
 def create_command():
     blocked_by_cmd = None
-    if request.args.get('blocked_by'):
-        blocked_by_cmd = util.get_command_by_uuid(request.args.get('blocked_by'))
-    block = util.get_block_by_uuid(request.args.get("cmd_block"))
-    return_code = request.args.get('return_code', -1)
+    if request.json.get('blocked_by'):
+        blocked_by_cmd = util.get_command_by_uuid(request.json.get('blocked_by'))
+    block = util.get_block_by_uuid(request.json.get("cmd_block"))
+    return_code = request.json.get('return_code', -1)
 
-    cmd = record.Command(request.args.get('cmd_str'), block, blocked_by=blocked_by_cmd, return_code=return_code)
+    cmd = record.Command(request.json.get('cmd_str'), block, blocked_by=blocked_by_cmd, return_code=return_code)
     record.add_and_commit(cmd)
 
     if cmd:
@@ -128,14 +129,14 @@ def create_command():
         return jsonify({
         }), 201
 
-@record.app.route('/api/command/queue/', methods = ['GET'])
+@record.app.route('/api/command/queue/', methods = ['POST'])
 def queue_command():
-    bq = util.get_node_queue_by_name(request.args.get('node'), request.args.get('queue'))
-    cmd = util.get_command_by_uuid(request.args.get('cmd_uuid'))
+    bq = util.get_node_queue_by_name(request.json.get('node'), request.json.get('queue'))
+    cmd = util.get_command_by_uuid(request.json.get('cmd_uuid'))
     if bq and cmd:
         cmd.queue = bq
         cmd.active = True
-        cmd.client = request.args.get('client')
+        cmd.client = request.json.get('client')
         record.db.session.commit()
         return jsonify({
             'uuid': cmd.uuid
@@ -143,9 +144,9 @@ def queue_command():
     return jsonify({
     }), 201
 
-@record.app.route('/api/command/fetch/', methods = ['GET'])
+@record.app.route('/api/command/fetch/', methods = ['POST'])
 def fetch_command():
-    bq = util.get_node_queue_by_name(request.args.get('node'), request.args.get('queue'))
+    bq = util.get_node_queue_by_name(request.json.get('node'), request.json.get('queue'))
     if bq:
         try:
             block = record.Command.query.join(record.CommandQueue).filter(record.CommandQueue.uuid == bq.uuid, record.Command.return_code == -1, record.Command.claimed == False).order_by(record.Command.position)[0]
@@ -166,12 +167,85 @@ def fetch_command():
     }), 201
 
 
-@record.app.route('/api/command/add-txt/', methods = ['GET'])
-def add_command_text():
-    cmd = util.get_command_by_uuid(request.args.get("uuid"))
-    text = request.args.get("text")
-    if cmd and len(text) > 0:
+@record.app.route('/api/command/update/', methods = ['POST'])
+def update_command():
+    cmd = util.get_command_by_uuid(request.json.get("uuid"))
+
+    if not cmd:
+        return jsonify({
+        }), 400
+
+    text = request.json.get("text")
+    if text and len(text) > 0:
         for key in text:
             if len(text[key]) > 0:
                 ctxt = record.CommandText(cmd, key, text[key])
                 record.add_and_commit(ctxt)
+
+    cmd_uuid_str = request.json.get("cmd_uuid_str")
+    if cmd_uuid_str:
+        cmd.cmd_uuid_str = cmd_uuid_str
+
+    meta_d = request.json.get("cmd_meta")
+    if meta_d:
+        for meta_cat in meta_d:
+            for key, value in meta_d[meta_cat].items():
+                record.add_and_commit(record.CommandMeta(cmd, meta_cat, key, value))
+
+    rc = request.json.get("return_code")
+    if rc is not None:
+        # Heh, "if rc" evaluated False for 0 exit status. Durrrr
+        cmd.return_code = rc
+
+    # Should return the changed stuff for checking
+    record.db.session.commit()
+    return jsonify({
+        "uuid": cmd.uuid
+    }), 201
+
+
+@record.app.route('/api/resource/update/', methods = ['POST'])
+def add_or_update_resource():
+    path = request.json.get("path")
+    path_hash = request.json.get("path_hash", None)
+    cmd_str = request.json.get("cmd_str")
+    node_uuid = request.json.get("node_uuid")
+    status = request.json.get("status_code")
+    cmd_uuid = request.json.get("cmd_uuid", None)
+    new_path = request.json.get("new_path", None)
+    metacommand = request.json.get("metacommand", False)
+
+    resource = util.get_resource_by_path(path)
+    if not resource:
+        resource = record.Resource(util.get_node_by_uuid(node_uuid), path, path_hash)
+        record.add_and_commit(resource)
+
+    if cmd_uuid:
+        # There is always one, except for (?)
+        cmd = util.get_command_by_uuid(cmd_uuid)
+    else:
+        return_code = None
+        if metacommand:
+            return_code = 0
+
+        # Dummy block
+        block = record.CommandBlock(None)
+        record.add_and_commit(block)
+
+        cmd = record.Command(cmd_str, block, return_code=return_code)
+        record.add_and_commit(cmd)
+
+    if cmd:
+        resource_command = record.ResourceCommand(resource, cmd, status, h=path_hash, new_path=new_path)
+        record.db.session.add(resource_command)
+
+        meta = util.attempt_parse_type(path)
+        if meta:
+            for key, value in meta.items():
+                record.db.session.add(record.ResourceCommandMeta(resource_command, "handler", key, value))
+
+    # Should return the changed stuff for checking
+    record.db.session.commit()
+    return jsonify({
+        "uuid": resource.uuid
+    }), 201

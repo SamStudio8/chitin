@@ -6,11 +6,18 @@ import sys
 import time
 import warnings
 
+import requests
+
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
 import record
 from cmd import attempt_parse_type, attempt_integrity_type
+
+def emit(endpoint, payload, client_uuid):
+    payload['client'] = client_uuid
+    r = requests.post(endpoint, json=payload)
+    return r.json()
 
 def get_file_record(path):
     path = os.path.abspath(path)
@@ -46,44 +53,6 @@ def get_resource_by_uuid(uuid):
         return None
     return resource
 
-def add_file_record2(path, cmd_str, status, cmd_uuid=None, new_path=None, metacommand=False):
-    resource = get_resource_by_path(path)
-    if not resource:
-        new_hash = hashfile(path)
-        resource = record.Resource(get_node_by_uuid(record.NODE_UUID), path, new_hash)
-        record.db.session.add(resource)
-        record.db.session.commit()
-    else:
-        try:
-            new_hash = hashfile(path)
-        except:
-            new_hash = None
-
-    if cmd_uuid:
-        # There is always one, except for (?)
-        cmd = get_command_by_uuid(cmd_uuid)
-    else:
-        return_code = None
-        if metacommand:
-            return_code = 0
-        block = add_command_block(0)
-        record.db.session.add(block)
-        record.db.session.commit()
-        cmd = add_command(cmd_str, block, return_code=return_code)
-        record.db.session.add(cmd)
-        record.db.session.commit()
-
-    if cmd:
-        resource_command = record.ResourceCommand(resource, cmd, status, h=new_hash, new_path=new_path)
-        record.db.session.add(resource_command)
-
-        meta = attempt_parse_type(path)
-        if meta:
-            for key, value in meta.items():
-                record.db.session.add(record.ResourceCommandMeta(resource_command, "handler", key, value))
-
-    record.db.session.commit()
-
 def get_node_queue_by_name(node, queue):
     #TODO FUTURE Check permissions to submit to Q etc. ?
     try:
@@ -99,27 +68,6 @@ def purge_commands_by_client(client_uuid):
         record.db.session.commit()
         count += 1
     return count
-
-def add_command_block(run_uuid, job=None):
-    run = None
-    try:
-        run = record.Job.query.filter(record.Job.uuid==str(run_uuid))[0]
-    except IndexError as e:
-        pass
-    command_block = record.CommandBlock(job_uuid=run)
-    record.db.session.add(command_block)
-    record.db.session.commit()
-    return command_block
-
-def add_command(cmd_str, cmd_block, return_code=-1, blocked_by=None):
-    blocked_by_cmd = None
-    if blocked_by:
-        blocked_by_cmd = get_command_by_uuid(blocked_by)
-
-    cmd = record.Command(cmd_str, cmd_block, return_code=return_code, blocked_by=blocked_by_cmd)
-    record.db.session.add(cmd)
-    record.db.session.commit()
-    return cmd
 
 def get_command_by_uuid(uuid):
     cmd = None
@@ -152,23 +100,6 @@ def get_block_by_uuid(uuid):
     except IndexError as e:
         pass
     return b
-
-def add_uuid_cmd_str(cmd_uuid, uuid_cmd_str):
-    cmd = get_command_by_uuid(cmd_uuid)
-    cmd.cmd_uuid_str = uuid_cmd_str
-    record.db.session.commit()
-
-def add_command_meta(cmd_uuid, meta_d):
-    cmd = get_command_by_uuid(cmd_uuid)
-    for meta_cat in meta_d:
-        for key, value in meta_d[meta_cat].items():
-            record.db.session.add(record.CommandMeta(cmd, meta_cat, key, value))
-    record.db.session.commit()
-
-def set_command_return_code(cmd_uuid, return_code):
-    cmd = get_command_by_uuid(cmd_uuid)
-    cmd.return_code = return_code
-    record.db.session.commit()
 
 def unclaim_command(cmd_uuid):
     cmd = get_command_by_uuid(cmd_uuid)
@@ -239,14 +170,35 @@ def check_integrity2(path, skip_hash=False):
             if resource:
                 # Path exists and we knew about it
                 if not check_hash_integrity(abspath):
-                    add_file_record2(abspath, "MODIFIED by (?)", 'M', metacommand=True)
+                    emit('http://localhost:5000/api/resource/update/', {
+                        "path": abspath,
+                        "cmd_str": "MODIFIED by (?)",
+                        "status_code": 'M',
+                        "path_hash": hashfile(path),
+                        "node_uuid": record.NODE_UUID,
+                        "metacommand": True,
+                    }, None)
                     broken_integrity = True
             else:
                 # Path exists but it is a surprise
-                add_file_record2(abspath, "CREATED by (?)", 'C', metacommand=True)
+                emit('http://localhost:5000/api/resource/update/', {
+                    "path": abspath,
+                    "cmd_str": "CREATED by (?)",
+                    "status_code": 'C',
+                    "path_hash": hashfile(path),
+                    "node_uuid": record.NODE_UUID,
+                    "metacommand": True,
+                }, None)
                 broken_integrity = True
         elif path_record:
-            add_file_record2(abspath, "DELETED by (?)", 'D', metacommand=True)
+            emit('http://localhost:5000/api/resource/update/', {
+                "path": abspath,
+                "cmd_str": "DELETED by (?)",
+                "status_code": 'D',
+                "path_hash": None,
+                "node_uuid": record.NODE_UUID,
+                "metacommand": True,
+            }, None)
             broken_integrity = True
     return broken_integrity
 
@@ -324,7 +276,6 @@ def check_status_set2(path_set):
     }
 
 ################################################################################
-
 
 def get_status(path, cmd_str=""):
     abspath = os.path.abspath(path)
