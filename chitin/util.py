@@ -100,33 +100,6 @@ def purge_commands_by_client(client_uuid):
         count += 1
     return count
 
-def queue_command(cmd_uuid, node, queue, client=None):
-    #TODO FUTURE Validate client, authorise access etc.
-    bq = get_node_queue_by_name(node, queue)
-    cmd = get_command_by_uuid(cmd_uuid)
-    if bq:
-        cmd.queue = bq
-        cmd.active = True
-        cmd.client = client
-        record.db.session.commit()
-    else:
-        print("Failed to enqueue command %s to %s:%s" % (cmd.uuid, node, queue))
-
-def get_block_from_node_queue(node_name, queue_name):
-    bq = get_node_queue_by_name(node_name, queue_name)
-    if not bq:
-        print("Failed to acquire command from %s:%s" % (node_name, queue_name))
-        return None
-
-    try:
-        block = record.Command.query.join(record.CommandQueue).filter(record.CommandQueue.uuid == bq.uuid, record.Command.return_code == -1, record.Command.claimed == False).order_by(record.Command.position)[0]
-    except IndexError:
-        return None
-
-    block.claimed = True
-    record.db.session.commit()
-    return block
-
 def add_command_block(run_uuid, job=None):
     run = None
     try:
@@ -171,6 +144,14 @@ def get_job_by_uuid(uuid):
     except IndexError as e:
         pass
     return job
+
+def get_block_by_uuid(uuid):
+    b = None
+    try:
+        b = record.CommandBlock.query.filter(record.CommandBlock.uuid==str(uuid))[0]
+    except IndexError as e:
+        pass
+    return b
 
 def add_uuid_cmd_str(cmd_uuid, uuid_cmd_str):
     cmd = get_command_by_uuid(cmd_uuid)
@@ -623,3 +604,6 @@ def watermark_experiment_image(exp_uuid, image_path, font_path="/usr/share/fonts
     if not name:
         name = datetime.now().strftime("%Y-%m-%d_%H:%M:%S") + ".png"
     new_img.save(os.path.join(exp.get_path(), name))
+
+###############################################################################
+

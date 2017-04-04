@@ -20,6 +20,10 @@ db = SQLAlchemy(app)
 #    def __init__(self, path):
 #        self.uuid = str(uuid.uuid4())
 
+def add_and_commit(thing):
+    db.session.add(thing)
+    db.session.commit()
+
 class Project(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
     name = db.Column(db.String(64)) # TODO Force unique names
@@ -142,12 +146,13 @@ class CommandQueue(db.Model):
         self.node = node
 
 class CommandBlock(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
+    uuid = db.Column(db.String(40), primary_key=True)
 
     job_uuid = db.Column(db.Integer, db.ForeignKey('job.uuid'))
     job = db.relationship('Job', backref=db.backref('blocks', lazy='dynamic'))
 
     def __init__(self, job_uuid=None):
+        self.uuid = str(uuid.uuid4())
         if job_uuid is not None:
             self.job = job_uuid
 
@@ -253,7 +258,7 @@ class Command(db.Model):
     timestamp = db.Column(db.DateTime)
     user = db.Column(db.String(40))
 
-    block_id = db.Column(db.Integer, db.ForeignKey('command_block.id'))
+    block_id = db.Column(db.Integer, db.ForeignKey('command_block.uuid'))
     block = db.relationship('CommandBlock', backref=db.backref('commands', lazy='dynamic'))
 
     blocked_by_uuid = db.Column(db.Integer, db.ForeignKey('command.uuid'))

@@ -5,6 +5,8 @@ import subprocess
 import sys
 import uuid
 
+import requests
+
 from datetime import datetime
 from multiprocessing import Process, Queue
 from time import sleep
@@ -94,8 +96,18 @@ special_commands = {
 class ChitinDaemon(object):
 
     @staticmethod
-    def handle_post(block, post_q):
-        command_r = util.get_command_by_uuid(block["uuid"])
+    def emit(endpoint, payload, client_uuid):
+        payload['client'] = client_uuid
+        r = requests.get(endpoint, params=payload)
+        return r.json()
+
+    @staticmethod
+    def handle_post(block, post_q, client_uuid):
+        command_r = ChitinDaemon.emit('http://localhost:5000/api/command/get/', {
+            'uuid': block["uuid"]
+        }, client_uuid)
+        cmd_uuid = command_r["uuid"]
+
         # disgusting
         stdout = block["stdout"]
         stderr = block["stderr"]
@@ -106,15 +118,15 @@ class ChitinDaemon(object):
         end_clock = block["end_clock"]
         start_clock = block["start_clock"]
         return_code = block["return_code"]
-        cmd_str = command_r.cmd
+        cmd_str = command_r["cmd_str"]
 
 
         if return_code != 0:
             # Should probably still check tokens and such...
             print("[WARN] Command %s exited with non-zero code." % cmd_str)
             block.update({"post": True, "success": False, "removed": False})
-            util.add_command_text(command_r.uuid, "stdout", stdout)
-            util.add_command_text(command_r.uuid, "stderr", stderr)
+            util.add_command_text(cmd_uuid, "stdout", stdout)
+            util.add_command_text(cmd_uuid, "stderr", stderr)
             post_q.put(block)
             return
 
@@ -125,7 +137,7 @@ class ChitinDaemon(object):
         fields = cmd_str.split(" ")
         token_p = util.parse_tokens(fields)
         watched_dirs = token_p["dirs"]
-        watched_dirs.add(command_r.block.job.get_path())
+        watched_dirs.add(command_r["job_path"])
         watched_files = token_p["files"]
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
@@ -148,11 +160,11 @@ class ChitinDaemon(object):
                     usage = True
                     if path not in fields:
                         continue
-                util.add_file_record2(path, cmd_str, cmd_uuid=command_r.uuid, status=status_code)
+                util.add_file_record2(path, cmd_str, cmd_uuid=cmd_uuid, status=status_code)
 
             for orig_path, new_path in status["moves"].items():
                 print("*\t%s -> %s" % (orig_path, new_path))
-                util.add_file_record2(orig_path, cmd_str, cmd_uuid=command_r.uuid, status='V', new_path=new_path)
+                util.add_file_record2(orig_path, cmd_str, cmd_uuid=cmd_uuid, status='V', new_path=new_path)
 
         # Terrible way to run filetype handlers
         #util.check_integrity_set2(watched_files, skip_check=block["cmd_block"]["skip_integrity"])
@@ -161,14 +173,14 @@ class ChitinDaemon(object):
         # Pretty hacky way to get the UUID cmd str
         token_p = util.parse_tokens(fields, insert_uuids=True)
         uuid_cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
-        util.add_uuid_cmd_str(command_r.uuid, uuid_cmd_str)
-        util.add_command_meta(command_r.uuid, meta)
+        util.add_uuid_cmd_str(cmd_uuid, uuid_cmd_str)
+        util.add_command_meta(cmd_uuid, meta)
 
         block.update({"post": True, "success": True, "removed": False})
         post_q.put(block)
 
     @staticmethod
-    def orchestrate(cmd_q, output_q, post_q, result_q, MAX_PROC, RES_PROC, SHELL_MODE):
+    def orchestrate(cmd_q, output_q, post_q, result_q, MAX_PROC, RES_PROC, SHELL_MODE, client_uuid):
         try:
             process_dict = {}
             completed_uuid = set()
@@ -220,7 +232,7 @@ class ChitinDaemon(object):
                         cmd_uuid = block["uuid"]
                         process_dict[cmd_uuid].terminate()
                         process_dict[cmd_uuid] = Process(target=ChitinDaemon.handle_post,
-                                args=(block, post_q))
+                                args=(block, post_q, client_uuid))
                         process_dict[cmd_uuid].daemon = True
                         process_dict[cmd_uuid].start()
 
@@ -232,17 +244,20 @@ class ChitinDaemon(object):
                 if len(process_dict) < MAX_PROC and not WAIT_FOR_DONE:
 
                     #TODO FUTURE If this fails, we loop and cannot SIGINT
-                    block = util.get_block_from_node_queue(record.NODE_NAME, "default")
+                    block = ChitinDaemon.emit('http://localhost:5000/api/command/fetch/', {
+                        'node': record.NODE_NAME,
+                        'queue': 'default',
+                    }, client_uuid)
 
                     if not block:
                         if DONE_ANYTHING and not SHELL_MODE:
                             WAIT_FOR_DONE = True
                         continue
 
-                    cmd_uuid = block.uuid
-                    if block.blocked_by is not None:
-                        if block.blocked_by.uuid not in completed_uuid:
-                            util.unclaim_command(block.uuid)
+                    cmd_uuid = block["uuid"]
+                    if block["blocked_by"] is not None:
+                        if block["blocked_by"] not in completed_uuid:
+                            util.unclaim_command(block["uuid"])
                             continue
 
                     process_dict[cmd_uuid] = Process(target=ChitinDaemon.run_command,
@@ -320,9 +335,15 @@ class Chitin(object):
 
         signal.signal(signal.SIGINT, self.signal_handler)
         self.daemon = Process(target=ChitinDaemon.orchestrate,
-            args=(None, self.out_q, self.post_q, self.result_q, MAX_PROC, RES_PROC, SHELL_MODE))
+            args=(None, self.out_q, self.post_q, self.result_q, MAX_PROC, RES_PROC, SHELL_MODE, self.client_uuid))
         self.daemon.start()
 
+
+    def emit(self, endpoint, payload):
+        #TODO FUTURE Gonna want some security here...
+        payload['client'] = self.client_uuid
+        r = requests.get(endpoint, params=payload)
+        return r.json()
 
     def signal_handler(self, signal, frame):
         #TODO ew
@@ -389,7 +410,9 @@ class Chitin(object):
         self.execute(commands, run=job.uuid, node=node, queue=queue) #could actually get the UUID from the run_params["job_uuid"]
 
     def execute(self, command_set, run=None, node="default", queue="default"):
-        event_group = util.add_command_block(run)
+        cmd_block_uuid = self.emit('http://localhost:5000/api/command-block/add/', {
+            'uuid': run
+        })["uuid"]
         last_uuid = None
         for command_i, command in enumerate(command_set):
             token_p = util.parse_tokens(command.split(" "))
@@ -397,12 +420,20 @@ class Chitin(object):
             # Collapse new command tokens to cmd_str
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
-            cmd = util.add_command(cmd_str, event_group, blocked_by=last_uuid)
+            cmd_uuid = self.emit('http://localhost:5000/api/command/add/', {
+                'cmd_str': cmd_str,
+                'cmd_block': cmd_block_uuid,
+                'blocked_by': last_uuid
+            })["uuid"]
             #util.add_command_meta(cmd.uuid, self.meta) TODO -- we don't really want to repeat this experiment data for every command
-            last_uuid = cmd.uuid
+            last_uuid = cmd_uuid
 
             # Add to queue
-            util.queue_command(cmd.uuid, node=node, queue=queue, client=self.client_uuid)
+            self.emit('http://localhost:5000/api/command/queue/', {
+                'cmd_uuid': cmd_uuid,
+                'node': node,
+                'queue': queue,
+            })
 
     def parse_script2(self, path, param_d):
         def check_line(line):
