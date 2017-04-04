@@ -1,7 +1,7 @@
 ENDPOINT_BASE = "http://localhost:5000/api/"
 DATABASE_PATH = '/home/chitin/chitin.db'
 
-# Edit and run node_setup.py
+# Send a suitable request with util.register_or_fetch_nodeq
 NODE_NAME = ""
 NODE_UUID = ""
 

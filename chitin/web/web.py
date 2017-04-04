@@ -96,7 +96,7 @@ def create_node():
         record.add_and_commit(node)
 
     try:
-        q = record.CommandQueue.query.join(record.Node).filter(record.CommandQueue.name == qname, record.Node.uuid = node.uuid)[0]
+        q = record.CommandQueue.query.join(record.Node).filter(record.CommandQueue.name == qname, record.Node.uuid == node.uuid)[0]
     except IndexError:
         q = None
 
