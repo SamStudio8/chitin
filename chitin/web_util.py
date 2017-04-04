@@ -2,13 +2,6 @@ import os
 
 import record
 
-#def get_file_record(path):
-#    try:
-#        item = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==False)[0]
-#    except IndexError:
-#        return None
-#    return item
-
 def get_ghosts_by_path(path, uuid=None):
     try:
         if uuid:
