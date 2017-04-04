@@ -139,11 +139,12 @@ def create_experiment():
     record.add_and_commit(exp)
 
     #TODO Would be nice to check whether params[p] is a Resource?
-    for i, p in enumerate(params):
-        p = record.ExperimentParameter(exp, p, params[p])
-        record.db.session.add(p)
-    record.db.session.commit()
+    if params:
+        for i, p in enumerate(params):
+            p = record.ExperimentParameter(exp, p, params[p])
+            record.db.session.add(p)
 
+    record.db.session.commit()
     return jsonify({
         'uuid': exp.uuid,
         'path': exp.get_path(),
