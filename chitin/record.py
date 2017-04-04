@@ -342,6 +342,3 @@ class CommandText(db.Model):
         self.num_lines = text.count("\n")
 
 db.create_all()
-import conf
-NODE_UUID = conf.node1.uuid
-NODE_NAME = conf.node1.name

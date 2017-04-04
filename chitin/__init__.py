@@ -20,6 +20,7 @@ from pygments.lexers import BashLexer
 
 import cmd
 import util
+import conf
 
 #import multiprocessing, logging
 #mpl = multiprocessing.log_to_stderr()
@@ -38,8 +39,6 @@ Execute one-liner commands as if this were your normal shell.
 Currently interactive and multi-line commands don't work, sorry about that.
 
 == Special Commands ==
-%history <path>         List complete history for a given path
-
 %q                      Switch suppression of stderr and stdout
 %i                      Switch performing full pre-command integrity checks
 
@@ -47,48 +46,7 @@ Currently interactive and multi-line commands don't work, sorry about that.
 %o <job>                Show stdout for given command result number
 """
 
-def history(file_path):
-    f = util.get_file_record(file_path)
-    if not f:
-        if os.path.exists(file_path):
-            if os.path.isfile(file_path):
-                print("No history.")
-        else:
-            print("No such path.")
-    else:
-        print f.current_path
-        event_sets = {
-            "actions": f.commands.filter(record.ResourceCommand.status != 'U'),
-            "usage": f.commands.filter(record.ResourceCommand.status == 'U')
-        }
-
-        for e_set in ["actions", "usage"]:
-            print e_set.upper()
-            for j in event_sets[e_set]:
-                print "{}\t{}\t{}\t{}\t{}".format(
-                    j.command.timestamp.strftime("%c"),
-                    j.command.user,
-                    j.hash,
-                    j.status,
-                    j.command.cmd,
-                )
-                for m in j.command.meta.all():
-                    print "{}{}\t{}\t{}".format(
-                        " " * 80,
-                        m.category,
-                        m.key,
-                        m.value
-                    )
-                for m in j.command.resources.all():
-                    print "{}{}\t{}".format(
-                        " " * 80,
-                        m.resource.current_path,
-                        m.hash,
-                    )
-            print ""
-
 special_commands = {
-    "history": history,
 }
 
 class ChitinDaemon(object):
@@ -139,7 +97,6 @@ class ChitinDaemon(object):
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
         # Parse the output
-        #TODO New files won't yet have a file record so we can't use get_file_record in cmd.py
         meta = {}
         if cmd.can_parse(fields[0]):
             parsed_meta = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
@@ -163,7 +120,7 @@ class ChitinDaemon(object):
                     "cmd_uuid": cmd_uuid,
                     "status_code": status_code,
                     "path_hash": util.hashfile(path),
-                    "node_uuid": record.NODE_UUID,
+                    "node_uuid": conf.NODE_UUID,
                 }, client_uuid)
             for orig_path, new_path in status["moves"].items():
                 print("*\t%s -> %s" % (orig_path, new_path))
@@ -174,7 +131,7 @@ class ChitinDaemon(object):
                     "cmd_uuid": cmd_uuid,
                     "status_code": 'V',
                     "path_hash": util.hashfile(path),
-                    "node_uuid": record.NODE_UUID,
+                    "node_uuid": conf.NODE_UUID,
                 }, client_uuid)
 
         # Terrible way to run filetype handlers
@@ -225,9 +182,11 @@ class ChitinDaemon(object):
                     DONE_ANYTHING = True
 
                     if not block["removed"]:
-                        command_r = util.get_command_by_uuid(block["uuid"])
-                        if command_r.blocked_by:
-                            completed_uuid.remove(command_r.blocked_by.uuid)
+                        command_r = util.emit('http://localhost:5000/api/command/get/', {
+                            'uuid': block["uuid"]
+                        }, client_uuid)
+                        if command_r["blocked_by"]:
+                            completed_uuid.remove(command_r["blocked_by"])
                         uuids_remaining -= 1
 
                     # Any additional post command duties
@@ -261,7 +220,7 @@ class ChitinDaemon(object):
 
                     #TODO FUTURE If this fails, we loop and cannot SIGINT
                     block = util.emit('http://localhost:5000/api/command/fetch/', {
-                        'node': record.NODE_NAME,
+                        'node': conf.NODE_NAME,
                         'queue': 'default',
                     }, client_uuid)
 
@@ -273,7 +232,10 @@ class ChitinDaemon(object):
                     cmd_uuid = block["uuid"]
                     if block["blocked_by"] is not None:
                         if block["blocked_by"] not in completed_uuid:
-                            util.unclaim_command(block["uuid"])
+                            util.emit('http://localhost:5000/api/command/update/', {
+                                "uuid": cmd_uuid,
+                                "claimed": False,
+                            }, client_uuid)
                             continue
 
                     process_dict[cmd_uuid] = Process(target=ChitinDaemon.run_command,
@@ -409,17 +371,20 @@ class Chitin(object):
         self.execute(command_set, run=run)
 
     #TODO FUTURE default is a shit default
-    def exe_script(self, script, job, job_params, node="default", queue="default"):
+    def exe_script(self, script, job_uuid, job_params, node="default", queue="default"):
         for p in job_params:
             if not job_params[p]:
                 print("[FAIL] Unset experiment parameter '%s'. Job NOT submitted." % p)
                 return None
 
         # TODO Should probably prevent overriding of defaults?
-        util.add_job_params(job.uuid, job_params)
+        util.emit('http://localhost:5000/api/job/update/', {
+            'job_uuid': job_uuid,
+            'params': job_params,
+        }, self.client_uuid)
 
         commands = self.parse_script2(script, job_params)
-        self.execute(commands, run=job.uuid, node=node, queue=queue) #could actually get the UUID from the run_params["job_uuid"]
+        self.execute(commands, run=job_uuid, node=node, queue=queue) #could actually get the UUID from the run_params["job_uuid"]
 
     def execute(self, command_set, run=None, node="default", queue="default"):
         cmd_block_uuid = util.emit('http://localhost:5000/api/command-block/add/', {
@@ -610,9 +575,9 @@ def shell():
     print(WELCOME)
     message = VERSION
 
-    project = util.register_or_fetch_project("Shell Sessions")
-    exp = util.register_experiment(os.path.abspath('.'), project, name="Shell Session @ %s" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"), shell=True)
-    run, params = util.register_job(exp.uuid)
+    project_uuid = util.register_or_fetch_project("Shell Sessions")
+    exp_uuid = util.register_experiment(os.path.abspath('.'), project, name="Shell Session @ %s" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"), shell=True)
+    run, params = util.register_job(exp_uuid)
 
     def get_bottom_toolbar_tokens(cli):
         return [(Token.Toolbar, ' '+message)]

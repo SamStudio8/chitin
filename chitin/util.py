@@ -12,6 +12,8 @@ from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
 import record
+import conf
+
 from cmd import attempt_parse_type, attempt_integrity_type
 
 def emit(endpoint, payload, client_uuid):
@@ -19,105 +21,17 @@ def emit(endpoint, payload, client_uuid):
     r = requests.post(endpoint, json=payload)
     return r.json()
 
-def get_file_record(path):
-    path = os.path.abspath(path)
-    try:
-        item = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==False)[0]
-    except IndexError:
-        return None
-    return item
-
 def get_resource_by_path(path):
     path = os.path.abspath(path)
-    try:
-        resource = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==False)[0]
-    except IndexError:
-        return None
-    return resource
-
-def get_ghosts_by_path(path, uuid=None):
-    path = os.path.abspath(path)
-    try:
-        if uuid:
-            resources = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==True, record.Resource.uuid!=uuid)
-        else:
-            resources = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==True)
-    except IndexError:
-        return None
-    return resources
+    return emit('http://localhost:5000/api/resource/get/', {
+        "path": path,
+    }, None)
 
 def get_resource_by_uuid(uuid):
-    try:
-        resource = record.Resource.query.filter(record.Resource.uuid==uuid)[0]
-    except IndexError:
-        return None
-    return resource
-
-def get_node_queue_by_name(node, queue):
-    #TODO FUTURE Check permissions to submit to Q etc. ?
-    try:
-        return record.CommandQueue.query.join(record.Node).filter(record.Node.name == node, record.CommandQueue.name == queue)[0]
-    except IndexError:
-        return None
-
-def purge_commands_by_client(client_uuid):
-    count = 0
-    for command in record.Command.query.filter(record.Command.client == client_uuid, record.Command.claimed == False, record.Command.return_code == -1):
-        command.return_code = 128
-        command.active = False
-        record.db.session.commit()
-        count += 1
-    return count
-
-def get_command_by_uuid(uuid):
-    cmd = None
-    try:
-        cmd = record.Command.query.filter(record.Command.uuid==str(uuid))[0]
-    except IndexError as e:
-        pass
-    return cmd
-
-def get_node_by_uuid(uuid):
-    node = None
-    try:
-        node = record.Node.query.filter(record.Node.uuid==str(uuid))[0]
-    except IndexError as e:
-        pass
-    return node
-
-def get_job_by_uuid(uuid):
-    job = None
-    try:
-        job = record.Job.query.filter(record.Job.uuid==str(uuid))[0]
-    except IndexError as e:
-        pass
-    return job
-
-def get_block_by_uuid(uuid):
-    b = None
-    try:
-        b = record.CommandBlock.query.filter(record.CommandBlock.uuid==str(uuid))[0]
-    except IndexError as e:
-        pass
-    return b
-
-def unclaim_command(cmd_uuid):
-    cmd = get_command_by_uuid(cmd_uuid)
-    cmd.position += 1
-    cmd.claimed = False
-    record.db.session.commit()
-
-def add_job_params(job_uuid, job_params):
-    job = get_job_by_uuid(job_uuid)
-    for key in job_params:
-        try:
-            p = record.ExperimentParameter.query.join(record.Experiment).filter(record.ExperimentParameter.key==key, record.Experiment.uuid == job.exp.uuid)[0]
-        except IndexError:
-            continue
-        jm = record.JobMeta(job, p, job_params[key])
-        record.db.session.add(jm)
-    record.db.session.commit()
-
+    return emit('http://localhost:5000/api/resource/get/', {
+        "uuid": uuid,
+    }, None)
+    
 ################################################################################
 def check_integrity_set2(path_set, skip_check=False):
     """Check the hash integrity of a set of filesystem paths"""
@@ -144,7 +58,7 @@ def check_integrity_set2(path_set, skip_check=False):
                             if check_integrity2(j_abspath):
                                 failed.append(j_abspath)
                 elif os.path.isfile(i_abspath):
-                    #TODO Do we want to keep a record of the files of subfolders?
+                    #TODO Do we want to keep track of the files of subfolders?
                     if i_abspath in path_set:
                         continue
                     if check_integrity2(i_abspath):
@@ -175,7 +89,7 @@ def check_integrity2(path, skip_hash=False):
                         "cmd_str": "MODIFIED by (?)",
                         "status_code": 'M',
                         "path_hash": hashfile(path),
-                        "node_uuid": record.NODE_UUID,
+                        "node_uuid": conf.NODE_UUID,
                         "metacommand": True,
                     }, None)
                     broken_integrity = True
@@ -186,7 +100,7 @@ def check_integrity2(path, skip_hash=False):
                     "cmd_str": "CREATED by (?)",
                     "status_code": 'C',
                     "path_hash": hashfile(path),
-                    "node_uuid": record.NODE_UUID,
+                    "node_uuid": conf.NODE_UUID,
                     "metacommand": True,
                 }, None)
                 broken_integrity = True
@@ -196,7 +110,7 @@ def check_integrity2(path, skip_hash=False):
                 "cmd_str": "DELETED by (?)",
                 "status_code": 'D',
                 "path_hash": None,
-                "node_uuid": record.NODE_UUID,
+                "node_uuid": conf.NODE_UUID,
                 "metacommand": True,
             }, None)
             broken_integrity = True
@@ -209,7 +123,7 @@ def check_hash_integrity(path):
     abspath = os.path.abspath(path)
     now_hash = hashfile(abspath)
     resource = get_resource_by_path(abspath)
-    return now_hash == resource.current_hash
+    return now_hash == resource["current_hash"]
 
 def check_rules_integrity(path):
     """Check whether the given path violates any rules associated with its type.
@@ -245,7 +159,7 @@ def check_status_set2(path_set):
                 if os.path.isdir(i_abspath):
                     pass
                 else:
-                    #TODO Do we want to keep a record of the files of untargeted subfolders?
+                    #TODO Do we want to keep track of the files of untargeted subfolders?
                     stat = get_status(i_abspath)
                     file_statii[i_abspath] = stat[0]
                     hashes[i_abspath] = (stat[1], stat[2])
@@ -283,7 +197,7 @@ def get_status(path, cmd_str=""):
     h = 0
     status = '?'
     last_h = 0
-    path_record = get_file_record(abspath)
+    path_record = get_resource_by_path(abspath)
     if os.path.exists(abspath):
         if os.path.isfile(abspath):
             h = hashfile(abspath)
@@ -292,12 +206,12 @@ def get_status(path, cmd_str=""):
 
         if path_record:
             try:
-                last_h = path_record.current_hash
+                last_h = path_record["current_hash"]
             except IndexError:
                 pass
 
             # Path exists and we knew about it
-            if path_record.current_hash != h:
+            if path_record["current_hash"] != h:
                 status = "M"
             else:
                 status = "U"
@@ -305,7 +219,7 @@ def get_status(path, cmd_str=""):
             # Path exists but it is a surprise
             status = "C"
     elif path_record:
-        last_h = path_record.current_hash
+        last_h = path_record["current_hash"]
         status = "D"
 
     return (status, h, last_h)
@@ -328,7 +242,7 @@ def parse_tokens(fields, insert_uuids=False):
         if field.startswith("chitin://"):
             resource = get_resource_by_uuid(field.split("chitin://")[1])
             if resource:
-                field = resource.current_path
+                field = resource["current_path"]
         abspath = os.path.abspath(field)
 
         # Does the path exist? We might want to add its parent directory
@@ -337,7 +251,7 @@ def parse_tokens(fields, insert_uuids=False):
             if insert_uuids:
                 resource = get_resource_by_path(field_)
                 if resource:
-                    field_ = "chitin://" + str(resource.uuid)
+                    field_ = "chitin://" + str(resource["uuid"])
 
             if had_semicolon:
                 fields[field_i] = field_ + ';' # Update the command to use the full abspath
@@ -359,7 +273,7 @@ def parse_tokens(fields, insert_uuids=False):
                 if os.path.isdir(i_abspath):
                     dirs_l.append(i_abspath)
                 else:
-                    #TODO Do we want to keep a record of the files of subfolders?
+                    #TODO Do we want to keep track of the files of subfolders?
                     pass
     return {
         "fields": fields,
@@ -382,65 +296,52 @@ def hashfile(path, halg=hashlib.md5, bs=65536):
 ################################################################################
 def register_or_fetch_project(name):
     try:
-        project = record.Project.query.filter(record.Project.name == name)[0]
-    except IndexError:
-        project = record.Project(name)
-        record.db.session.add(project)
-        record.db.session.commit()
-    return project
+        return emit('http://localhost:5000/api/project/add/', {
+            "name": name,
+        }, None)["uuid"]
+    except Exception:
+        raise Exception
 
-def register_experiment(path, project, create_dir=False, params=None, name=None, shell=False):
-    exp = record.Experiment(path, project, name=name, shell=shell)
-    record.db.session.add(exp)
-    record.db.session.commit()
-
-    #TODO Would be nice to check whether params[p] is a Resource?
-    if params:
-        for i, p in enumerate(params):
-            #p = record.ExperimentParameter(self, p, params[p], i)
-            p = record.ExperimentParameter(exp, p, params[p])
-            record.db.session.add(p)
-        record.db.session.commit()
-
-    if create_dir:
-        try:
-            os.mkdir(exp.get_path())
-        except:
-            #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
-            print("[WARN] Encountered trouble creating %s" % exp.get_path())
-    return exp
-
-def register_job(exp_uuid, create_dir=False):
+def register_experiment(path, project_uuid, create_dir=False, params=None, name=None, shell=False):
     exp = None
     try:
-        exp = record.Experiment.query.filter(record.Experiment.uuid==str(exp_uuid))[0]
-    except IndexError as e:
-        pass
+        exp = emit('http://localhost:5000/api/experiment/add/', {
+            "path": path,
+            "project_uuid": project_uuid,
+            "params": params,
+            "shell": shell,
+            "name": name,
+        }, None)
+    except Exception as e:
+        raise e
 
-    job_params = exp.make_params()
-
-    job = record.Job(exp)
-    record.db.session.add(job)
-
-    job_path = "" # euch, this is going to cause trouble
     if create_dir:
         try:
-            os.mkdir(job.get_path())
-            job_path = job.get_path()
+            os.mkdir(exp["path"])
         except:
             #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
-            print("[WARN] Encountered trouble creating %s" % job.get_path())
+            print("[WARN] Encountered trouble creating %s" % exp["path"])
+            raise Exception
+    return exp["uuid"]
 
-    job_params["exp_uuid"] = exp.uuid
-    job_params["job_uuid"] = job.uuid
-    job_params["job_dir"] = job_path
-    return job, job_params
+def register_job(exp_uuid, create_dir=False):
+    job = None
+    try:
+        job = emit('http://localhost:5000/api/job/add/', {
+            "exp_uuid": exp_uuid,
+        }, None)
+    except Exception as e:
+        raise e
 
-def register_run(exp_uuid, create_dir=False, meta=None):
-    print("[WARN] register_run is deprecated, use register_job instead")
-    print("       Note that you no longer pass parameters to register_job,")
-    print("       register_run now returns a dict for you to fill in")
-    return register_job(exp_uuid, create_dir=create_dir)
+    if create_dir:
+        try:
+            os.mkdir(job["path"])
+        except:
+            #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
+            print("[WARN] Encountered trouble creating %s" % job["path"])
+
+    return job["uuid"], job["params"]
+
 
 def archive_experiment(exp_uuid, tar_path=None, manifest=True, new_root=None):
     import tarfile
