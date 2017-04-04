@@ -7,6 +7,11 @@ from chitin.cmd import attempt_parse_type
 def project_list():
     return render_template('projects.html', projects=record.Project.query.order_by(record.Project.last_exp_ts.desc()))
 
+@record.app.route('/nodes/')
+def node_list():
+    nodes = record.Node.query.all()
+    return render_template('node_list.html', nodes=nodes)
+
 @record.app.route('/project/<project>')
 def project_detail(project):
     project = record.Project.query.get_or_404(project)
