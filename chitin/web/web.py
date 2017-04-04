@@ -1,7 +1,7 @@
 from flask import render_template, Markup, Response, redirect, url_for, request, abort, jsonify
 
 from chitin import web_util, record
-from cmd import attempt_parse_type
+from chitin.cmd import attempt_parse_type
 
 @record.app.route('/')
 def project_list():

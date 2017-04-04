@@ -17,28 +17,28 @@ from cmd import attempt_integrity_type
 
 def emit(endpoint, payload, client_uuid):
     payload['client'] = client_uuid
-    r = requests.post(endpoint, json=payload)
+    r = requests.post(conf.ENDPOINT_BASE + endpoint, json=payload)
     return r.json()
 
 def get_resource_by_path(path):
     path = os.path.abspath(path)
-    return emit('http://localhost:5000/api/resource/get/', {
+    return emit('resource/get/', {
         "path": path,
     }, None)
 
 def get_resource_by_uuid(uuid):
-    return emit('http://localhost:5000/api/resource/get/', {
+    return emit('resource/get/', {
         "uuid": uuid,
     }, None)
 
 def get_experiment_by_uuid(uuid):
-    return emit('http://localhost:5000/api/experiment/get/', {
+    return emit('experiment/get/', {
         "uuid": uuid,
     }, None)
     
 def register_or_fetch_project(name):
     try:
-        return emit('http://localhost:5000/api/project/add/', {
+        return emit('project/add/', {
             "name": name,
         }, None)["uuid"]
     except Exception:
@@ -47,7 +47,7 @@ def register_or_fetch_project(name):
 def register_experiment(path, project_uuid, create_dir=False, params=None, name=None, shell=False):
     exp = None
     try:
-        exp = emit('http://localhost:5000/api/experiment/add/', {
+        exp = emit('experiment/add/', {
             "path": path,
             "project_uuid": project_uuid,
             "params": params,
@@ -69,7 +69,7 @@ def register_experiment(path, project_uuid, create_dir=False, params=None, name=
 def register_job(exp_uuid, create_dir=False):
     job = None
     try:
-        job = emit('http://localhost:5000/api/job/add/', {
+        job = emit('job/add/', {
             "exp_uuid": exp_uuid,
         }, None)
     except Exception as e:
@@ -135,7 +135,7 @@ def check_integrity2(path, skip_hash=False):
             if resource:
                 # Path exists and we knew about it
                 if not check_hash_integrity(abspath):
-                    emit('http://localhost:5000/api/resource/update/', {
+                    emit('resource/update/', {
                         "path": abspath,
                         "cmd_str": "MODIFIED by (?)",
                         "status_code": 'M',
@@ -146,7 +146,7 @@ def check_integrity2(path, skip_hash=False):
                     broken_integrity = True
             else:
                 # Path exists but it is a surprise
-                emit('http://localhost:5000/api/resource/update/', {
+                emit('resource/update/', {
                     "path": abspath,
                     "cmd_str": "CREATED by (?)",
                     "status_code": 'C',
@@ -156,7 +156,7 @@ def check_integrity2(path, skip_hash=False):
                 }, None)
                 broken_integrity = True
         elif resource:
-            emit('http://localhost:5000/api/resource/update/', {
+            emit('resource/update/', {
                 "path": abspath,
                 "cmd_str": "DELETED by (?)",
                 "status_code": 'D',

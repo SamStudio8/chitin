@@ -53,7 +53,7 @@ class ChitinDaemon(object):
 
     @staticmethod
     def handle_post(block, post_q, client_uuid):
-        command_r = util.emit('http://localhost:5000/api/command/get/', {
+        command_r = util.emit('command/get/', {
             'uuid': block["uuid"]
         }, client_uuid)
         cmd_uuid = command_r["uuid"]
@@ -75,7 +75,7 @@ class ChitinDaemon(object):
             # Should probably still check tokens and such...
             print("[WARN] Command %s exited with non-zero code." % cmd_str)
             block.update({"post": True, "success": False, "removed": False})
-            util.emit('http://localhost:5000/api/command/update/', {
+            util.emit('command/update/', {
                 "uuid": cmd_uuid,
                 "text": {
                     "stdout": stdour,
@@ -114,7 +114,7 @@ class ChitinDaemon(object):
                     usage = True
                     if path not in fields:
                         continue
-                util.emit('http://localhost:5000/api/resource/update/', {
+                util.emit('resource/update/', {
                     "path": path,
                     "cmd_str": cmd_str,
                     "cmd_uuid": cmd_uuid,
@@ -124,7 +124,7 @@ class ChitinDaemon(object):
                 }, client_uuid)
             for orig_path, new_path in status["moves"].items():
                 print("*\t%s -> %s" % (orig_path, new_path))
-                util.emit('http://localhost:5000/api/resource/update/', {
+                util.emit('resource/update/', {
                     "path": orig_path,
                     "new_path": new_path,
                     "cmd_str": cmd_str,
@@ -141,7 +141,7 @@ class ChitinDaemon(object):
         # Pretty hacky way to get the UUID cmd str
         token_p = util.parse_tokens(fields, insert_uuids=True)
         uuid_cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
-        util.emit('http://localhost:5000/api/command/update/', {
+        util.emit('command/update/', {
             "uuid": cmd_uuid,
             "cmd_uuid_str": uuid_cmd_str,
             "cmd_meta": meta,
@@ -182,7 +182,7 @@ class ChitinDaemon(object):
                     DONE_ANYTHING = True
 
                     if not block["removed"]:
-                        command_r = util.emit('http://localhost:5000/api/command/get/', {
+                        command_r = util.emit('command/get/', {
                             'uuid': block["uuid"]
                         }, client_uuid)
                         if command_r["blocked_by"]:
@@ -190,7 +190,7 @@ class ChitinDaemon(object):
                         uuids_remaining -= 1
 
                     # Any additional post command duties
-                    util.emit('http://localhost:5000/api/command/update/', {
+                    util.emit('command/update/', {
                         "uuid": cmd_uuid,
                         "return_code": block["return_code"],
                     }, client_uuid)
@@ -219,7 +219,7 @@ class ChitinDaemon(object):
                 if len(process_dict) < MAX_PROC and not WAIT_FOR_DONE:
 
                     #TODO FUTURE If this fails, we loop and cannot SIGINT
-                    block = util.emit('http://localhost:5000/api/command/fetch/', {
+                    block = util.emit('command/fetch/', {
                         'node': conf.NODE_NAME,
                         'queue': 'default',
                     }, client_uuid)
@@ -232,7 +232,7 @@ class ChitinDaemon(object):
                     cmd_uuid = block["uuid"]
                     if block["blocked_by"] is not None:
                         if block["blocked_by"] not in completed_uuid:
-                            util.emit('http://localhost:5000/api/command/update/', {
+                            util.emit('command/update/', {
                                 "uuid": cmd_uuid,
                                 "claimed": False,
                             }, client_uuid)
@@ -256,7 +256,7 @@ class ChitinDaemon(object):
 
     @staticmethod
     def run_command(cmd_uuid, output_q, client_uuid):
-        block = util.emit('http://localhost:5000/api/command/get/', {
+        block = util.emit('command/get/', {
             'uuid': cmd_uuid
         }, client_uuid)
         def preexec_function():
@@ -378,7 +378,7 @@ class Chitin(object):
                 return None
 
         # TODO Should probably prevent overriding of defaults?
-        util.emit('http://localhost:5000/api/job/update/', {
+        util.emit('job/update/', {
             'job_uuid': job_uuid,
             'params': job_params,
         }, self.client_uuid)
@@ -387,7 +387,7 @@ class Chitin(object):
         self.execute(commands, run=job_uuid, node=node, queue=queue) #could actually get the UUID from the run_params["job_uuid"]
 
     def execute(self, command_set, run=None, node="default", queue="default"):
-        cmd_block_uuid = util.emit('http://localhost:5000/api/command-block/add/', {
+        cmd_block_uuid = util.emit('command-block/add/', {
             'uuid': run
         }, self.client_uuid)["uuid"]
         last_uuid = None
@@ -397,7 +397,7 @@ class Chitin(object):
             # Collapse new command tokens to cmd_str
             cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
-            cmd_uuid = util.emit('http://localhost:5000/api/command/add/', {
+            cmd_uuid = util.emit('command/add/', {
                 'cmd_str': cmd_str,
                 'cmd_block': cmd_block_uuid,
                 'blocked_by': last_uuid
@@ -406,7 +406,7 @@ class Chitin(object):
             last_uuid = cmd_uuid
 
             # Add to queue
-            util.emit('http://localhost:5000/api/command/queue/', {
+            util.emit('command/queue/', {
                 'cmd_uuid': cmd_uuid,
                 'node': node,
                 'queue': queue,

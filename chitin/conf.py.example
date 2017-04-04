@@ -1,9 +1,12 @@
 import record
 
 node1 = record.Node("default", "default.example.com", "My Node")
-record.db.session.add(node1)
-record.db.session.commit()
+record.add_and_commit(node1)
 
 q1 = record.CommandQueue("default", node1)
-record.db.session.add(q1)
+record.add_and_commit(q1)
+
+ENDPOINT_BASE = "http://localhost:5000/api/"
+NODE_NAME = node1.name
+NODE_UUID = node1.uuid
 
