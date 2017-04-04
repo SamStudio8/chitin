@@ -580,7 +580,7 @@ def shell():
 
     project_uuid = util.register_or_fetch_project("Shell Sessions")
     exp_uuid = util.register_experiment(os.path.abspath('.'), project_uuid, name="Shell Session @ %s" % datetime.now().strftime("%Y-%m-%d %H:%M:%S"), shell=True)
-    run, params = util.register_job(exp_uuid)
+    run_uuid, params = util.register_job(exp_uuid)
 
     def get_bottom_toolbar_tokens(cli):
         return [(Token.Toolbar, ' '+message)]
@@ -634,7 +634,7 @@ def shell():
             if len(special_command_set) > 0:
                 command_set = special_command_set
 
-            c.execute(command_set, run=run.uuid)
+            c.execute(command_set, run=run_uuid)
 
     except EOFError:
         print("Bye!")
