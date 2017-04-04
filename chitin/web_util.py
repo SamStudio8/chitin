@@ -33,15 +33,6 @@ def get_node_queue_by_name(node, queue):
     except IndexError:
         return None
 
-def purge_commands_by_client(client_uuid):
-    count = 0
-    for command in record.Command.query.filter(record.Command.client == client_uuid, record.Command.claimed == False, record.Command.return_code == -1):
-        command.return_code = 128
-        command.active = False
-        record.db.session.commit()
-        count += 1
-    return count
-
 def get_command_by_uuid(uuid):
     cmd = None
     try:

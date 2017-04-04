@@ -6,11 +6,11 @@ import uuid
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 
+import conf
 import util
 
 app = Flask(__name__, template_folder='web/templates')
-home = os.path.expanduser('~')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////' + home + '/.chitin.dev.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////' + conf.DATABASE_PATH
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 db = SQLAlchemy(app)
 

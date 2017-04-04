@@ -285,6 +285,23 @@ def fetch_command():
     return jsonify({
     }), 201
 
+@record.app.route('/api/command/purge/', methods = ['POST'])
+def purge_command():
+    bq = web_util.get_node_queue_by_name(request.json.get('node'), request.json.get('queue'))
+    client_uuid = request.json.get("client")
+    if bq and client_uuid:
+        count = 0
+        for command in record.Command.query.join(record.CommandQueue).filter(record.CommandQueue.uuid == bq.uuid, record.Command.client == client_uuid, record.Command.claimed == False, record.Command.return_code == -1):
+            command.return_code = 128
+            command.active = False
+            record.db.session.commit()
+            count += 1
+        return jsonify({
+            'count': count,
+        }), 201
+    return jsonify({
+    }), 400
+
 
 @record.app.route('/api/command/update/', methods = ['POST'])
 def update_command():

@@ -325,8 +325,11 @@ class Chitin(object):
             return
 
         # Purge uncompleted jobs from cmd_q
-        n = util.purge_commands_by_client(self.client_uuid)
-        print("Purged %d jobs." % n)
+        r = util.emit('command/purge/', {
+            'node': conf.NODE_NAME,
+            'queue': 'default',
+        }, self.client_uuid)
+        print("Purged %d jobs." % r["count"])
 
         # Wait for running jobs to complete
         print("Waiting for remaining jobs to complete.")
