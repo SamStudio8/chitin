@@ -1,14 +1,7 @@
 ENDPOINT_BASE = "http://localhost:5000/api/"
 DATABASE_PATH = '/home/chitin/chitin.db'
 
-import record
-
-node1 = record.Node("default", "default.example.com", "My Node")
-record.add_and_commit(node1)
-
-q1 = record.CommandQueue("default", node1)
-record.add_and_commit(q1)
-
-NODE_NAME = node1.name
-NODE_UUID = node1.uuid
+# Edit and run node_setup.py
+NODE_NAME = ""
+NODE_UUID = ""
 
