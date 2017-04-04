@@ -1,6 +1,7 @@
 from flask import render_template, Markup, Response, redirect, url_for, request, abort, jsonify
 
-from chitin import web_util, record, util
+from chitin import web_util, record
+from cmd import attempt_parse_type
 
 @record.app.route('/')
 def project_list():
@@ -363,7 +364,7 @@ def add_or_update_resource():
         resource_command = record.ResourceCommand(resource, cmd, status, h=path_hash, new_path=new_path)
         record.db.session.add(resource_command)
 
-        meta = util.attempt_parse_type(path)
+        meta = attempt_parse_type(path)
         if meta:
             for key, value in meta.items():
                 record.db.session.add(record.ResourceCommandMeta(resource_command, "handler", key, value))

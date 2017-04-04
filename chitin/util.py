@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 import conf
 
-from cmd import attempt_parse_type, attempt_integrity_type
+from cmd import attempt_integrity_type
 
 def emit(endpoint, payload, client_uuid):
     payload['client'] = client_uuid
