@@ -78,7 +78,7 @@ class ChitinDaemon(object):
             util.emit('command/update/', {
                 "uuid": cmd_uuid,
                 "text": {
-                    "stdout": stdour,
+                    "stdout": stdout,
                     "stderr": stderr
                 }
             })
