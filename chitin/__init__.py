@@ -558,18 +558,21 @@ class Chitin(object):
         return temp_ptr != self.curr_result_ptr
 
     def print_results(self, force=False):
-        if self.move_result_q() or force:
-            for pos in range(self.curr_result_ptr-1, -1, -1) + range(self.MAX_RESULTS-1,self.curr_result_ptr-1,-1):
-                block = self.results[pos]
-                if block is not None:
-                    print("(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_block"]["cmd"][:61]))
+        #if self.move_result_q() or force:
+        #    for pos in range(self.curr_result_ptr-1, -1, -1) + range(self.MAX_RESULTS-1,self.curr_result_ptr-1,-1):
+        #        block = self.results[pos]
+        #        if block is not None:
+        #            print("(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_str"][:61]))
+        pass
 
     def print_stdout(self, pos):
         #TODO Would be well nice if we could just spawn `less` with the stdout lines here...
-        block = self.results[pos]
-        if block is not None:
-            print("(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_block"]["cmd"][:61]))
-            print(block["stdout"])
+        #block = self.results[pos]
+        #if block is not None:
+        #    print("(%d) %s...%s\t%s" % (pos, block["uuid"][:6], block["uuid"][-5:], block["cmd_str"][:61]))
+        #    print(block["stdout"])
+        print("[WARN] Sorry I broke this for now")
+        pass
 
 def shell():
     c = Chitin(SHELL_MODE=True)
