@@ -164,3 +164,14 @@ def fetch_command():
             return jsonify(res), 201
     return jsonify({
     }), 201
+
+
+@record.app.route('/api/command/add-txt/', methods = ['GET'])
+def add_command_text():
+    cmd = util.get_command_by_uuid(request.args.get("uuid"))
+    text = request.args.get("text")
+    if cmd and len(text) > 0:
+        for key in text:
+            if len(text[key]) > 0:
+                ctxt = record.CommandText(cmd, key, text[key])
+                record.add_and_commit(ctxt)

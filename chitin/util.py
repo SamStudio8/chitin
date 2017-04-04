@@ -158,14 +158,6 @@ def add_uuid_cmd_str(cmd_uuid, uuid_cmd_str):
     cmd.cmd_uuid_str = uuid_cmd_str
     record.db.session.commit()
 
-def add_command_text(cmd_uuid, key, text):
-    if len(text) == 0:
-        return
-    cmd = get_command_by_uuid(cmd_uuid)
-    ctxt = record.CommandText(cmd, key, text)
-    record.db.session.add(ctxt)
-    record.db.session.commit()
-
 def add_command_meta(cmd_uuid, meta_d):
     cmd = get_command_by_uuid(cmd_uuid)
     for meta_cat in meta_d:

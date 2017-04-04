@@ -125,8 +125,13 @@ class ChitinDaemon(object):
             # Should probably still check tokens and such...
             print("[WARN] Command %s exited with non-zero code." % cmd_str)
             block.update({"post": True, "success": False, "removed": False})
-            util.add_command_text(cmd_uuid, "stdout", stdout)
-            util.add_command_text(cmd_uuid, "stderr", stderr)
+            ChitinDaemon.emit('http://localhost:5000/api/command/add-txt/', {
+                "uuid": cmd_uuid,
+                "text": {
+                    "stdout": stdour,
+                    "stderr": stderr
+                }
+            )
             post_q.put(block)
             return
 
@@ -261,7 +266,7 @@ class ChitinDaemon(object):
                             continue
 
                     process_dict[cmd_uuid] = Process(target=ChitinDaemon.run_command,
-                            args=(cmd_uuid, output_q))
+                            args=(cmd_uuid, output_q, client_uuid))
                     process_dict[cmd_uuid].daemon = True
                     process_dict[cmd_uuid].start()
                     uuids_remaining += 1
@@ -277,22 +282,24 @@ class ChitinDaemon(object):
             post_q.close()
 
     @staticmethod
-    def run_command(cmd_uuid, output_q):
-        block = util.get_command_by_uuid(cmd_uuid)
+    def run_command(cmd_uuid, output_q, client_uuid):
+        block = ChitinDaemon.emit('http://localhost:5000/api/command/get/', {
+            'uuid': block["uuid"]
+        }, client_uuid)
         def preexec_function():
             # http://stackoverflow.com/questions/5045771/python-how-to-prevent-subprocesses-from-receiving-ctrl-c-control-c-sigint <3
             # Ignore the SIGINT signal by setting the handler to the standard signal handler SIG_IGN
             signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         # Check whether files have been altered outside of environment before proceeding
-        token_p = util.parse_tokens(block.cmd.split(" "))
+        token_p = util.parse_tokens(block["cmd_str"].split(" "))
         #for failed in util.check_integrity_set2(token_p["dirs"] | token_p["files"], skip_check=block["skip_integrity"]):
         for failed in util.check_integrity_set2(token_p["dirs"] | token_p["files"]):
                 print("[WARN] '%s' has been modified outside of lab book." % failed)
 
         start_clock = datetime.now()
         proc = subprocess.Popen(
-                block.cmd,
+                block["cmd_str"],
                 shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -303,7 +310,7 @@ class ChitinDaemon(object):
         end_clock = datetime.now()
 
         output_q.put({
-            "uuid": block.uuid,
+            "uuid": block["uuid"],
             "stdout": stdout,
             "stderr": stderr,
             "start_clock": start_clock,
