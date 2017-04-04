@@ -36,6 +36,53 @@ def get_experiment_by_uuid(uuid):
         "uuid": uuid,
     }, None)
     
+def register_or_fetch_project(name):
+    try:
+        return emit('http://localhost:5000/api/project/add/', {
+            "name": name,
+        }, None)["uuid"]
+    except Exception:
+        raise Exception
+
+def register_experiment(path, project_uuid, create_dir=False, params=None, name=None, shell=False):
+    exp = None
+    try:
+        exp = emit('http://localhost:5000/api/experiment/add/', {
+            "path": path,
+            "project_uuid": project_uuid,
+            "params": params,
+            "shell": shell,
+            "name": name,
+        }, None)
+    except Exception as e:
+        raise e
+
+    if create_dir:
+        try:
+            os.mkdir(exp["path"])
+        except:
+            #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
+            print("[WARN] Encountered trouble creating %s" % exp["path"])
+            raise Exception
+    return exp["uuid"]
+
+def register_job(exp_uuid, create_dir=False):
+    job = None
+    try:
+        job = emit('http://localhost:5000/api/job/add/', {
+            "exp_uuid": exp_uuid,
+        }, None)
+    except Exception as e:
+        raise e
+
+    if create_dir:
+        try:
+            os.mkdir(job["path"])
+        except:
+            #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
+            print("[WARN] Encountered trouble creating %s" % job["path"])
+
+    return job["uuid"], job["params"]
 ################################################################################
 def check_integrity_set2(path_set, skip_check=False):
     """Check the hash integrity of a set of filesystem paths"""
@@ -298,53 +345,6 @@ def hashfile(path, halg=hashlib.md5, bs=65536):
     return halg.hexdigest()
 
 ################################################################################
-def register_or_fetch_project(name):
-    try:
-        return emit('http://localhost:5000/api/project/add/', {
-            "name": name,
-        }, None)["uuid"]
-    except Exception:
-        raise Exception
-
-def register_experiment(path, project_uuid, create_dir=False, params=None, name=None, shell=False):
-    exp = None
-    try:
-        exp = emit('http://localhost:5000/api/experiment/add/', {
-            "path": path,
-            "project_uuid": project_uuid,
-            "params": params,
-            "shell": shell,
-            "name": name,
-        }, None)
-    except Exception as e:
-        raise e
-
-    if create_dir:
-        try:
-            os.mkdir(exp["path"])
-        except:
-            #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
-            print("[WARN] Encountered trouble creating %s" % exp["path"])
-            raise Exception
-    return exp["uuid"]
-
-def register_job(exp_uuid, create_dir=False):
-    job = None
-    try:
-        job = emit('http://localhost:5000/api/job/add/', {
-            "exp_uuid": exp_uuid,
-        }, None)
-    except Exception as e:
-        raise e
-
-    if create_dir:
-        try:
-            os.mkdir(job["path"])
-        except:
-            #TODO would be nice if we could distinguish between OSError 13 (permission) etc.
-            print("[WARN] Encountered trouble creating %s" % job["path"])
-
-    return job["uuid"], job["params"]
 
 
 def archive_experiment(exp_uuid, tar_path=None, manifest=True, new_root=None):
