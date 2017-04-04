@@ -113,6 +113,19 @@ def create_experiment():
         'path': exp.get_path(),
     }), 201
 
+@record.app.route('/api/experiment/get/', methods = ['POST'])
+def get_experiment():
+    exp = web_util.get_experiment_by_uuid(request.json.get("uuid"))
+
+    if not exp:
+        return jsonify({
+        }), 400
+    else:
+        return jsonify({
+            'uuid': exp.uuid,
+            'path': exp.get_path(),
+        }), 201
+
 @record.app.route('/api/job/add/', methods = ['POST'])
 def create_job():
     exp = web_util.get_experiment_by_uuid(request.json.get("exp_uuid"))

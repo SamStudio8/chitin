@@ -11,7 +11,6 @@ import requests
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
-import record
 import conf
 
 from cmd import attempt_parse_type, attempt_integrity_type
@@ -29,6 +28,11 @@ def get_resource_by_path(path):
 
 def get_resource_by_uuid(uuid):
     return emit('http://localhost:5000/api/resource/get/', {
+        "uuid": uuid,
+    }, None)
+
+def get_experiment_by_uuid(uuid):
+    return emit('http://localhost:5000/api/experiment/get/', {
         "uuid": uuid,
     }, None)
     
@@ -104,7 +108,7 @@ def check_integrity2(path, skip_hash=False):
                     "metacommand": True,
                 }, None)
                 broken_integrity = True
-        elif path_record:
+        elif resource:
             emit('http://localhost:5000/api/resource/update/', {
                 "path": abspath,
                 "cmd_str": "DELETED by (?)",
@@ -197,29 +201,29 @@ def get_status(path, cmd_str=""):
     h = 0
     status = '?'
     last_h = 0
-    path_record = get_resource_by_path(abspath)
+    resource = get_resource_by_path(abspath)
     if os.path.exists(abspath):
         if os.path.isfile(abspath):
             h = hashfile(abspath)
         elif os.path.isdir(abspath):
             h = None
 
-        if path_record:
+        if resource:
             try:
-                last_h = path_record["current_hash"]
+                last_h = resource["current_hash"]
             except IndexError:
                 pass
 
             # Path exists and we knew about it
-            if path_record["current_hash"] != h:
+            if resource["current_hash"] != h:
                 status = "M"
             else:
                 status = "U"
         else:
             # Path exists but it is a surprise
             status = "C"
-    elif path_record:
-        last_h = path_record["current_hash"]
+    elif resource:
+        last_h = resource["current_hash"]
         status = "D"
 
     return (status, h, last_h)
@@ -345,39 +349,40 @@ def register_job(exp_uuid, create_dir=False):
 
 def archive_experiment(exp_uuid, tar_path=None, manifest=True, new_root=None):
     import tarfile
-    exp = record.Experiment.query.get(exp_uuid)
+    exp = get_experiment_by_uuid(exp_uuid)
     if not exp:
         return None
 
     def translate_tarinfo(info):
-        info.name = os.path.join(exp.uuid, "".join(info.name.split(exp.uuid)[1:])[1:])
+        info.name = os.path.join(exp["uuid"], "".join(info.name.split(exp["uuid"])[1:])[1:])
         if new_root:
             info.name = os.path.join(new_root, info.name)
         return info
 
     if tar_path is None:
-        tar_path = os.path.join(exp.get_path(), exp.uuid + ".tar.gz")
+        tar_path = os.path.join(exp["path"], exp["uuid"] + ".tar.gz")
 
     tar = tarfile.open(tar_path, "w|gz")
-    tar.add(exp.get_path(), filter=translate_tarinfo)
+    tar.add(exp["path"], filter=translate_tarinfo)
 
     tar.close()
 
     return tar_path
 
 def generate_experiment_manifest(exp_uuid, dest=None):
-    exp = record.Experiment.query.get(exp_uuid)
+    exp = get_experiment_by_uuid(exp_uuid)
     if not exp:
         return None
 
     if not dest:
-        dest = os.path.join(exp.get_path(), exp.uuid + ".manifest")
+        dest = os.path.join(exp["path"], exp["uuid"] + ".manifest")
     dest_fh = open(dest, "w")
 
-    for r in exp.runs:
-        dest_fh.write(
-            ("%s\t" % r.uuid) + "\t".join([m.value for m in r.rmeta]) + "\n"
-        )
+    #TODO FIX
+    #for r in exp["runs"]:
+    #    dest_fh.write(
+    #        ("%s\t" % r.uuid) + "\t".join([m.value for m in r.rmeta]) + "\n"
+    #    )
     dest_fh.close()
 
 
@@ -424,8 +429,10 @@ def copy_experiment_archive(exp_uuid, hostname, ssh_config_path=None, dest=None,
 
 #TODO(samstudio8) Find a non-garbage way of finding a nice default truetype font
 def watermark_experiment_image(exp_uuid, image_path, font_path="/usr/share/fonts/dejavu/DejaVuSansMono-Bold.ttf", name=None):
-    exp = record.Experiment.query.get(exp_uuid)
-    if not exp or not os.path.exists(exp.get_path()):
+    exp = get_experiment_by_uuid(exp_uuid)
+    if not exp:
+        return None
+    if not exp or not os.path.exists(exp["path"]):
         print("[WARN] Could not create watermarked experiment image.")
         return
 
@@ -447,7 +454,7 @@ def watermark_experiment_image(exp_uuid, image_path, font_path="/usr/share/fonts
     # Save the image
     if not name:
         name = datetime.now().strftime("%Y-%m-%d_%H:%M:%S") + ".png"
-    new_img.save(os.path.join(exp.get_path(), name))
+    new_img.save(os.path.join(exp["path"], name))
 
 ###############################################################################
 
