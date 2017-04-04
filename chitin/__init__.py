@@ -116,7 +116,6 @@ class ChitinDaemon(object):
                         continue
                 util.emit('resource/update/', {
                     "path": path,
-                    "cmd_str": cmd_str,
                     "cmd_uuid": cmd_uuid,
                     "status_code": status_code,
                     "path_hash": util.hashfile(path),
@@ -127,7 +126,6 @@ class ChitinDaemon(object):
                 util.emit('resource/update/', {
                     "path": orig_path,
                     "new_path": new_path,
-                    "cmd_str": cmd_str,
                     "cmd_uuid": cmd_uuid,
                     "status_code": 'V',
                     "path_hash": util.hashfile(path),
