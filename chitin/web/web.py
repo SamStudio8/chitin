@@ -79,6 +79,36 @@ def chitin_filter(s):
 
 ###############################################################################
 #TODO Need to sanity check these interfaces, do they have the right params?
+@record.app.route('/api/nodeq/add/', methods = ['POST'])
+def create_node():
+    url = request.json.get("url")
+    desc = request.json.get("desc")
+    name = request.json.get("name")
+    qname = request.json.get("qname")
+
+    try:
+        node = record.Node.query.filter(record.Node.name == name)[0]
+    except IndexError:
+        node = None
+
+    if not node:
+        node = record.Node(name, url, desc)
+        record.add_and_commit(node)
+
+    try:
+        q = record.CommandQueue.query.join(record.Node).filter(record.CommandQueue.name == qname, record.Node.uuid = node.uuid)[0]
+    except IndexError:
+        q = None
+
+    if not q:
+        q = record.CommandQueue(qname, node)
+        record.add_and_commit(q)
+
+    return jsonify({
+        'node_uuid': node.uuid,
+        'node_name': node.name,
+        'q_uuid': q.uuid,
+    }), 201
 
 @record.app.route('/api/project/add/', methods = ['POST'])
 def create_project():

@@ -35,14 +35,25 @@ def get_experiment_by_uuid(uuid):
     return emit('experiment/get/', {
         "uuid": uuid,
     }, None)
-    
+
 def register_or_fetch_project(name):
     try:
         return emit('project/add/', {
             "name": name,
         }, None)["uuid"]
-    except Exception:
-        raise Exception
+    except Exception as e:
+        raise e
+
+def register_or_fetch_nodeq(name, url, desc, qname):
+    try:
+        print emit('nodeq/add/', {
+            "name": name,
+            "url": url,
+            "desc": desc,
+            "qname": qname
+        }, None)
+    except Exception as e:
+        raise e
 
 def register_experiment(path, project_uuid, create_dir=False, params=None, name=None, shell=False):
     exp = None
