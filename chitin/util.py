@@ -207,15 +207,8 @@ def check_status_set2(path_set):
 
     for item in path_set:
         item = os.path.abspath(item)
-        if not os.path.exists(item):
-            stat = get_status(item)
-            file_statii[item] = stat[0]
-            hashes[item] = (stat[1], stat[2])
 
         if os.path.isdir(item):
-            stat = get_status(item)
-            hashes[item] = (stat[1], stat[2])
-
             for subitem in os.listdir(item):
                 i_abspath = os.path.join(item, subitem)
                 if os.path.isdir(i_abspath):
@@ -263,8 +256,6 @@ def get_status(path, cmd_str=""):
     if os.path.exists(abspath):
         if os.path.isfile(abspath):
             h = hashfile(abspath)
-        elif os.path.isdir(abspath):
-            h = None
 
         if resource:
             try:

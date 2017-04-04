@@ -81,7 +81,7 @@ class ChitinDaemon(object):
                     "stdout": stdout,
                     "stderr": stderr
                 }
-            })
+            }, client_uuid)
             post_q.put(block)
             return
 
@@ -634,7 +634,7 @@ def shell():
             if len(special_command_set) > 0:
                 command_set = special_command_set
 
-            c.execute(command_set, run=run_uuid)
+            c.execute(command_set, run=run_uuid, node=conf.NODE_NAME)
 
     except EOFError:
         print("Bye!")
