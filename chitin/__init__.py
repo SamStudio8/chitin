@@ -221,6 +221,7 @@ class ChitinDaemon(object):
                         'node': conf.NODE_NAME,
                         'queue': 'default',
                     }, client_uuid)
+                    sleep(1)
 
                     if not block:
                         if DONE_ANYTHING and not SHELL_MODE:
