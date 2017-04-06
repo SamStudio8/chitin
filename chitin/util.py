@@ -17,7 +17,10 @@ from cmd import attempt_integrity_type
 
 def emit(endpoint, payload, client_uuid):
     payload['client'] = client_uuid
-    payload['token'] = conf.CLIENT_TOKEN
+    try:
+        payload['token'] = conf.CLIENT_TOKEN
+    except:
+        pass
     r = requests.post(conf.ENDPOINT_BASE + endpoint, json=payload)
     return r.json()
 
