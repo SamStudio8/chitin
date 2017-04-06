@@ -1,7 +1,12 @@
 ENDPOINT_BASE = "http://localhost:5000/api/"
-DATABASE_PATH = '/home/chitin/chitin.db'
+DATABASE_PATH = '~/chitin.db'
 
-# Send a suitable request with util.register_or_fetch_nodeq
+# Fill in with properties of your desired target node (call web_util.register_or_fetch_nodeq on server)
 NODE_NAME = ""
 NODE_UUID = ""
+
+# Send a suitable request with util.
+USER_UUID=''
+CLIENT_UUID=''
+CLIENT_TOKEN=''
 

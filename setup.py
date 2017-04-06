@@ -11,6 +11,7 @@ requirements = [
     "paramiko",
     "pillow",
     "requests",
+    "itsdangerous",
 ]
 
 test_requirements = [

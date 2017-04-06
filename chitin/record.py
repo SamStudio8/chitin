@@ -5,6 +5,8 @@ import uuid
 
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+from itsdangerous import (JSONWebSignatureSerializer as Serializer, BadSignature, SignatureExpired)
+from werkzeug.security import generate_password_hash, check_password_hash #TODO This will probably do?
 
 import conf
 import util
@@ -14,19 +16,62 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////' + conf.DATABASE_PATH
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = True
 db = SQLAlchemy(app)
 
-#class Labbook(db.Model):
-#    uuid = db.Column(db.String(40), primary_key=True)
-#
-#    def __init__(self, path):
-#        self.uuid = str(uuid.uuid4())
-
 def add_and_commit(thing):
     db.session.add(thing)
     db.session.commit()
 
+class User(db.Model):
+    uuid = db.Column(db.String(40), primary_key=True)
+    username = db.Column(db.String(40), unique=True, index=True)
+    pass_hash = db.Column(db.String(128))
+
+    def __init__(self, username, password):
+        self.uuid = str(uuid.uuid4())
+        self.username = username
+        self.pass_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.pass_hash, password)
+
+    @staticmethod
+    def validate_user(username, password):
+        user = User.query.filter_by(username = username).first()
+        if not user or not user.check_password(password):
+            return None
+        return user
+
+class Client(db.Model):
+    #TODO Need a client distinguisher here, IP address? Some sort of hardware property?
+    uuid = db.Column(db.String(40), primary_key=True)
+    #api_key = db.Column(db.String(128))
+
+    user_uuid = db.Column(db.Integer, db.ForeignKey('user.uuid'))
+    user = db.relationship('User', backref=db.backref('clients', lazy='dynamic'))
+
+    def __init__(self, user):
+        self.uuid = str(uuid.uuid4())
+        self.user = user
+
+    def generate_token(self, app_secret):
+        s = Serializer(app_secret)
+        return s.dumps({'uuid': self.uuid})
+
+    @staticmethod
+    def validate_token(app_secret, token, user_uuid=None):
+        s = Serializer(app_secret)
+        try:
+            data = s.loads(token)
+        except SignatureExpired:
+            return None # valid token, but expired
+        except BadSignature:
+            return None # invalid token
+
+        #return Client.query.join(User).filter(User.uuid==user_uuid, Client.uuid==data['uuid']).first()
+        return Client.query.filter_by(uuid = data['uuid']).first()
+
 class Project(db.Model):
     uuid = db.Column(db.String(40), primary_key=True)
-    name = db.Column(db.String(64)) # TODO Force unique names
+    name = db.Column(db.String(64), unique=True)
 
     last_exp_ts = db.Column(db.DateTime)
 
@@ -36,12 +81,6 @@ class Project(db.Model):
         self.last_exp_ts = datetime.datetime.now()
 
     def get_experiments(self):
-        for exp in self.experiments:
-            path = exp.get_path()
-            #TODO Not very efficient and a bit gross
-            if not exp.shell and not os.path.exists(path):
-                exp.active = False
-                db.session.commit() #TODO Is this needed?
         return self.experiments.order_by(Experiment.timestamp.desc())
 
 

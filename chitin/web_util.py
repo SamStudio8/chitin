@@ -3,81 +3,58 @@ import os
 import record
 
 def get_ghosts_by_path(path, uuid=None):
-    try:
-        if uuid:
-            resources = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==True, record.Resource.uuid!=uuid)
-        else:
-            resources = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==True)
-    except IndexError:
-        return None
+    if uuid:
+        resources = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==True, record.Resource.uuid!=uuid)
+    else:
+        resources = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==True)
     return resources
 
 def get_resource_by_path(path):
-    try:
-        resource = record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==False)[0]
-    except IndexError:
-        return None
-    return resource
+    return record.Resource.query.filter(record.Resource.current_path==path, record.Resource.ghost==False).first()
 
 def get_resource_by_uuid(uuid):
-    try:
-        resource = record.Resource.query.filter(record.Resource.uuid==uuid)[0]
-    except IndexError:
-        return None
-    return resource
+    return record.Resource.query.filter(record.Resource.uuid==uuid).first()
 
 def get_node_queue_by_name(node, queue):
     #TODO FUTURE Check permissions to submit to Q etc. ?
-    try:
-        return record.CommandQueue.query.join(record.Node).filter(record.Node.name == node, record.CommandQueue.name == queue)[0]
-    except IndexError:
-        return None
+    return record.CommandQueue.query.join(record.Node).filter(record.Node.name == node, record.CommandQueue.name == queue).first()
 
 def get_command_by_uuid(uuid):
-    cmd = None
-    try:
-        cmd = record.Command.query.filter(record.Command.uuid==str(uuid))[0]
-    except IndexError:
-        pass
-    return cmd
+    return record.Command.query.filter(record.Command.uuid==str(uuid)).first()
 
 def get_experiment_by_uuid(uuid):
-    exp = None
-    try:
-        exp = record.Experiment.query.filter(record.Experiment.uuid==str(uuid))[0]
-    except IndexError:
-        pass
-    return exp
+    return record.Experiment.query.filter(record.Experiment.uuid==str(uuid)).first()
 
 def get_project_by_uuid(uuid):
-    project = None
-    try:
-        project = record.Project.query.filter(record.Project.uuid==str(uuid))[0]
-    except IndexError:
-        pass
-    return project
+    return record.Project.query.filter(record.Project.uuid==str(uuid)).first()
 
 def get_node_by_uuid(uuid):
-    node = None
-    try:
-        node = record.Node.query.filter(record.Node.uuid==str(uuid))[0]
-    except IndexError as e:
-        pass
-    return node
+    return record.Node.query.filter(record.Node.uuid==str(uuid)).first()
 
 def get_job_by_uuid(uuid):
-    job = None
-    try:
-        job = record.Job.query.filter(record.Job.uuid==str(uuid))[0]
-    except IndexError as e:
-        pass
-    return job
+    return record.Job.query.filter(record.Job.uuid==str(uuid)).first()
 
 def get_block_by_uuid(uuid):
-    b = None
-    try:
-        b = record.CommandBlock.query.filter(record.CommandBlock.uuid==str(uuid))[0]
-    except IndexError as e:
-        pass
-    return b
+    return record.CommandBlock.query.filter(record.CommandBlock.uuid==str(uuid)).first()
+
+
+def add_user(username, password):
+    user = record.User(username, password)
+    record.add_and_commit(user)
+    return user.uuid, user.username
+
+def register_or_fetch_nodeq(name, url, desc, qname):
+    node = record.Node.query.filter(record.Node.name == name).first()
+    if not node:
+        node = record.Node(name, url, desc)
+        record.add_and_commit(node)
+
+    q = record.CommandQueue.query.join(record.Node).filter(record.CommandQueue.name == qname, record.Node.uuid == node.uuid).first()
+    if not q:
+        q = record.CommandQueue(qname, node)
+        record.add_and_commit(q)
+
+    print("NODE_NAME='%s'" % node.name)
+    print("NODE_UUID='%s'" % node.uuid)
+    print("QUEUE_UUID='%s'" % q.uuid)
 

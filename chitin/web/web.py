@@ -1,8 +1,58 @@
+from functools import wraps
+
 from flask import render_template, Markup, Response, redirect, url_for, request, abort, jsonify
 
-from chitin import web_util, record
+from itsdangerous import (JSONWebSignatureSerializer as Serializer, BadSignature, SignatureExpired)
+
+from chitin import web_util, record, web_conf
 from chitin.cmd import attempt_parse_type
 
+def require_token(fn):
+    """Authorisation decorator, checks for a 'token' key in the request JSON
+    and ensures the token belongs to an authorised client."""
+
+    @wraps(fn)
+    def _wrap(*args, **kwargs):
+        if not request.json:
+            abort(400)
+            return None #???
+
+        elif 'token' not in request.json:
+            abort(400)
+            return None
+
+        client = record.Client.validate_token(web_conf.SERVER_SECRET, request.json['token'])
+        if client is None:
+            abort(401)
+            return None
+
+        #return fn(client_uuid=client.uuid, *args, **kwargs)
+        return fn(*args, **kwargs)
+    return _wrap
+
+def require_userpass(fn):
+    """Authorisation decorator, checks for 'user' and 'pass' keys in the request JSON
+    and ensures the User is authorised."""
+
+    @wraps(fn)
+    def _wrap(*args, **kwargs):
+        if not request.json:
+            abort(400)
+            return None #???
+
+        elif 'username' not in request.json or 'password' not in request.json:
+            abort(400)
+            return None
+
+        user = record.User.validate_user(request.json['username'], request.json['password'])
+        if user is None:
+            abort(401)
+            return None
+
+        return fn(user=user, *args, **kwargs)
+    return _wrap
+
+###############################################################################
 @record.app.route('/')
 def project_list():
     return render_template('projects.html', projects=record.Project.query.order_by(record.Project.last_exp_ts.desc()))
@@ -79,45 +129,11 @@ def chitin_filter(s):
 
 ###############################################################################
 #TODO Need to sanity check these interfaces, do they have the right params?
-@record.app.route('/api/nodeq/add/', methods = ['POST'])
-def create_node():
-    url = request.json.get("url")
-    desc = request.json.get("desc")
-    name = request.json.get("name")
-    qname = request.json.get("qname")
-
-    try:
-        node = record.Node.query.filter(record.Node.name == name)[0]
-    except IndexError:
-        node = None
-
-    if not node:
-        node = record.Node(name, url, desc)
-        record.add_and_commit(node)
-
-    try:
-        q = record.CommandQueue.query.join(record.Node).filter(record.CommandQueue.name == qname, record.Node.uuid == node.uuid)[0]
-    except IndexError:
-        q = None
-
-    if not q:
-        q = record.CommandQueue(qname, node)
-        record.add_and_commit(q)
-
-    return jsonify({
-        'node_uuid': node.uuid,
-        'node_name': node.name,
-        'q_uuid': q.uuid,
-    }), 201
-
 @record.app.route('/api/project/add/', methods = ['POST'])
+@require_token
 def create_project():
     name = request.json.get("name")
-    try:
-        project = record.Project.query.filter(record.Project.name == name)[0]
-    except IndexError:
-        project = None
-
+    project = record.Project.query.filter(record.Project.name == name).first()
     if not project:
         project = record.Project(name)
         record.add_and_commit(project)
@@ -128,6 +144,7 @@ def create_project():
 
 
 @record.app.route('/api/experiment/add/', methods = ['POST'])
+@require_token
 def create_experiment():
     path = request.json.get("path")
     project = web_util.get_project_by_uuid(request.json.get("project_uuid"))
@@ -151,6 +168,7 @@ def create_experiment():
     }), 201
 
 @record.app.route('/api/experiment/get/', methods = ['POST'])
+@require_token
 def get_experiment():
     exp = web_util.get_experiment_by_uuid(request.json.get("uuid"))
 
@@ -164,6 +182,7 @@ def get_experiment():
         }), 201
 
 @record.app.route('/api/job/add/', methods = ['POST'])
+@require_token
 def create_job():
     exp = web_util.get_experiment_by_uuid(request.json.get("exp_uuid"))
 
@@ -186,6 +205,7 @@ def create_job():
     }), 201
 
 @record.app.route('/api/job/update/', methods = ['POST'])
+@require_token
 def update_job():
     job = web_util.get_job_by_uuid(request.json.get("job_uuid"))
 
@@ -195,12 +215,10 @@ def update_job():
 
     job_params = request.json.get("params", {})
     for key in job_params:
-        try:
-            p = record.ExperimentParameter.query.join(record.Experiment).filter(record.ExperimentParameter.key==key, record.Experiment.uuid == job.exp.uuid)[0]
-        except IndexError:
-            continue
-        jm = record.JobMeta(job, p, job_params[key])
-        record.db.session.add(jm)
+        p = record.ExperimentParameter.query.join(record.Experiment).filter(record.ExperimentParameter.key==key, record.Experiment.uuid == job.exp.uuid).first()
+        if p:
+            jm = record.JobMeta(job, p, job_params[key])
+            record.db.session.add(jm)
 
 
     record.db.session.commit()
@@ -209,6 +227,7 @@ def update_job():
     }), 201
 
 @record.app.route('/api/resource/get/', methods = ['POST'])
+@require_token
 def get_resource():
     uuid = request.json.get("uuid")
     path = request.json.get("path")
@@ -230,6 +249,7 @@ def get_resource():
 
 
 @record.app.route('/api/command-block/add/', methods = ['POST'])
+@require_token
 def create_command_block():
     run = web_util.get_job_by_uuid(request.json.get("uuid"))
 
@@ -244,12 +264,9 @@ def create_command_block():
         }), 201
 
 @record.app.route('/api/command/get/', methods = ['POST'])
+@require_token
 def get_command():
-    try:
-        cmd = record.Command.query.filter(record.Command.uuid==str(request.json.get("uuid")))[0]
-    except IndexError:
-        cmd = None
-
+    cmd = record.Command.query.filter(record.Command.uuid==str(request.json.get("uuid"))).first()
     if cmd:
         res = {
             "uuid": cmd.uuid,
@@ -266,6 +283,7 @@ def get_command():
 
 
 @record.app.route('/api/command/add/', methods = ['POST'])
+@require_token
 def create_command():
     blocked_by_cmd = None
     if request.json.get('blocked_by'):
@@ -285,6 +303,7 @@ def create_command():
         }), 201
 
 @record.app.route('/api/command/queue/', methods = ['POST'])
+@require_token
 def queue_command():
     bq = web_util.get_node_queue_by_name(request.json.get('node'), request.json.get('queue'))
     cmd = web_util.get_command_by_uuid(request.json.get('cmd_uuid'))
@@ -300,14 +319,11 @@ def queue_command():
     }), 201
 
 @record.app.route('/api/command/fetch/', methods = ['POST'])
+@require_token
 def fetch_command():
     bq = web_util.get_node_queue_by_name(request.json.get('node'), request.json.get('queue'))
     if bq:
-        try:
-            block = record.Command.query.join(record.CommandQueue).filter(record.CommandQueue.uuid == bq.uuid, record.Command.return_code == -1, record.Command.claimed == False).order_by(record.Command.position)[0]
-        except IndexError:
-            block = None
-
+        block = record.Command.query.join(record.CommandQueue).filter(record.CommandQueue.uuid == bq.uuid, record.Command.return_code == -1, record.Command.claimed == False).order_by(record.Command.position).first()
         if block:
             block.claimed = True
             record.db.session.commit()
@@ -322,6 +338,7 @@ def fetch_command():
     }), 201
 
 @record.app.route('/api/command/purge/', methods = ['POST'])
+@require_token
 def purge_command():
     bq = web_util.get_node_queue_by_name(request.json.get('node'), request.json.get('queue'))
     client_uuid = request.json.get("client")
@@ -340,6 +357,7 @@ def purge_command():
 
 
 @record.app.route('/api/command/update/', methods = ['POST'])
+@require_token
 def update_command():
     cmd = web_util.get_command_by_uuid(request.json.get("uuid"))
 
@@ -383,6 +401,7 @@ def update_command():
 
 
 @record.app.route('/api/resource/update/', methods = ['POST'])
+@require_token
 def add_or_update_resource():
     path = request.json.get("path")
     path_hash = request.json.get("path_hash", None)
@@ -427,3 +446,16 @@ def add_or_update_resource():
     return jsonify({
         "uuid": resource.uuid
     }), 201
+
+###############################################################################
+@record.app.route('/api/client/add/', methods = ['POST'])
+@require_userpass
+def create_client(user):
+    client = record.Client(user)
+    record.add_and_commit(client)
+    return jsonify({
+        'user_uuid': user.uuid,
+        'client_uuid': client.uuid,
+        'client_token': client.generate_token(web_conf.SERVER_SECRET),
+    }), 201
+

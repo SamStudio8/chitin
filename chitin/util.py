@@ -17,8 +17,22 @@ from cmd import attempt_integrity_type
 
 def emit(endpoint, payload, client_uuid):
     payload['client'] = client_uuid
+    payload['token'] = conf.CLIENT_TOKEN
     r = requests.post(conf.ENDPOINT_BASE + endpoint, json=payload)
     return r.json()
+
+def register_client(username):
+    import getpass
+    try:
+        r = emit('client/add/', {
+            "username": username,
+            "password": getpass.getpass("Password"),
+        }, None)
+        print("USER_UUID='%s'" % r["user_uuid"])
+        print("CLIENT_UUID='%s'" % r["client_uuid"])
+        print("CLIENT_TOKEN='%s'" % r["client_token"])
+    except Exception as e:
+        raise e
 
 def get_resource_by_path(path):
     path = os.path.abspath(path)
@@ -41,17 +55,6 @@ def register_or_fetch_project(name):
         return emit('project/add/', {
             "name": name,
         }, None)["uuid"]
-    except Exception as e:
-        raise e
-
-def register_or_fetch_nodeq(name, url, desc, qname):
-    try:
-        print emit('nodeq/add/', {
-            "name": name,
-            "url": url,
-            "desc": desc,
-            "qname": qname
-        }, None)
     except Exception as e:
         raise e
 
@@ -260,7 +263,7 @@ def get_status(path, cmd_str=""):
         if resource:
             try:
                 last_h = resource["current_hash"]
-            except IndexError:
+            except KeyError:
                 pass
 
             # Path exists and we knew about it
