@@ -1,0 +1,5 @@
+SERVER_SECRET="something_you_wont_tell_everyone"
+
+# Send a suitable request with web_util.register_or_fetch_nodeq
+NODE_NAME = ""
+NODE_UUID = ""
