@@ -26,8 +26,7 @@ def require_token(fn):
             abort(401)
             return None
 
-        #return fn(client_uuid=client.uuid, *args, **kwargs)
-        return fn(*args, **kwargs)
+        return fn(client=client, *args, **kwargs)
     return _wrap
 
 def require_userpass(fn):
@@ -61,6 +60,11 @@ def project_list():
 def node_list():
     nodes = record.Node.query.all()
     return render_template('node_list.html', nodes=nodes)
+
+@record.app.route('/user/<user>')
+def user_detail(user):
+    user = record.User.query.get_or_404(user)
+    return render_template('user.html', user=user)
 
 @record.app.route('/project/<project>')
 def project_detail(project):
@@ -131,7 +135,7 @@ def chitin_filter(s):
 #TODO Need to sanity check these interfaces, do they have the right params?
 @record.app.route('/api/project/add/', methods = ['POST'])
 @require_token
-def create_project():
+def create_project(client):
     name = request.json.get("name")
     project = record.Project.query.filter(record.Project.name == name).first()
     if not project:
@@ -145,7 +149,7 @@ def create_project():
 
 @record.app.route('/api/experiment/add/', methods = ['POST'])
 @require_token
-def create_experiment():
+def create_experiment(client):
     path = request.json.get("path")
     project = web_util.get_project_by_uuid(request.json.get("project_uuid"))
     params = request.json.get("params", {})
@@ -169,7 +173,7 @@ def create_experiment():
 
 @record.app.route('/api/experiment/get/', methods = ['POST'])
 @require_token
-def get_experiment():
+def get_experiment(client):
     exp = web_util.get_experiment_by_uuid(request.json.get("uuid"))
 
     if not exp:
@@ -183,7 +187,7 @@ def get_experiment():
 
 @record.app.route('/api/job/add/', methods = ['POST'])
 @require_token
-def create_job():
+def create_job(client):
     exp = web_util.get_experiment_by_uuid(request.json.get("exp_uuid"))
 
     if not exp:
@@ -206,7 +210,7 @@ def create_job():
 
 @record.app.route('/api/job/update/', methods = ['POST'])
 @require_token
-def update_job():
+def update_job(client):
     job = web_util.get_job_by_uuid(request.json.get("job_uuid"))
 
     if not job:
@@ -228,7 +232,7 @@ def update_job():
 
 @record.app.route('/api/resource/get/', methods = ['POST'])
 @require_token
-def get_resource():
+def get_resource(client):
     uuid = request.json.get("uuid")
     path = request.json.get("path")
 
@@ -250,7 +254,7 @@ def get_resource():
 
 @record.app.route('/api/command-block/add/', methods = ['POST'])
 @require_token
-def create_command_block():
+def create_command_block(client):
     run = web_util.get_job_by_uuid(request.json.get("uuid"))
 
     if run:
@@ -265,7 +269,7 @@ def create_command_block():
 
 @record.app.route('/api/command/get/', methods = ['POST'])
 @require_token
-def get_command():
+def get_command(client):
     cmd = record.Command.query.filter(record.Command.uuid==str(request.json.get("uuid"))).first()
     if cmd:
         res = {
@@ -284,14 +288,14 @@ def get_command():
 
 @record.app.route('/api/command/add/', methods = ['POST'])
 @require_token
-def create_command():
+def create_command(client):
     blocked_by_cmd = None
     if request.json.get('blocked_by'):
         blocked_by_cmd = web_util.get_command_by_uuid(request.json.get('blocked_by'))
     block = web_util.get_block_by_uuid(request.json.get("cmd_block"))
     return_code = request.json.get('return_code', -1)
 
-    cmd = record.Command(request.json.get('cmd_str'), block, blocked_by=blocked_by_cmd, return_code=return_code)
+    cmd = record.Command(request.json.get('cmd_str'), block, blocked_by=blocked_by_cmd, return_code=return_code, user=client.user)
     record.add_and_commit(cmd)
 
     if cmd:
@@ -304,7 +308,7 @@ def create_command():
 
 @record.app.route('/api/command/queue/', methods = ['POST'])
 @require_token
-def queue_command():
+def queue_command(client):
     bq = web_util.get_node_queue_by_name(request.json.get('node'), request.json.get('queue'))
     cmd = web_util.get_command_by_uuid(request.json.get('cmd_uuid'))
     if bq and cmd:
@@ -320,7 +324,7 @@ def queue_command():
 
 @record.app.route('/api/command/fetch/', methods = ['POST'])
 @require_token
-def fetch_command():
+def fetch_command(client):
     bq = web_util.get_node_queue_by_name(request.json.get('node'), request.json.get('queue'))
     if bq:
         block = record.Command.query.join(record.CommandQueue).filter(record.CommandQueue.uuid == bq.uuid, record.Command.return_code == -1, record.Command.claimed == False).order_by(record.Command.position).first()
@@ -339,7 +343,7 @@ def fetch_command():
 
 @record.app.route('/api/command/purge/', methods = ['POST'])
 @require_token
-def purge_command():
+def purge_command(client):
     bq = web_util.get_node_queue_by_name(request.json.get('node'), request.json.get('queue'))
     client_uuid = request.json.get("client")
     if bq and client_uuid:
@@ -358,7 +362,7 @@ def purge_command():
 
 @record.app.route('/api/command/update/', methods = ['POST'])
 @require_token
-def update_command():
+def update_command(client):
     cmd = web_util.get_command_by_uuid(request.json.get("uuid"))
 
     if not cmd:
@@ -402,7 +406,7 @@ def update_command():
 
 @record.app.route('/api/resource/update/', methods = ['POST'])
 @require_token
-def add_or_update_resource():
+def add_or_update_resource(client):
     path = request.json.get("path")
     path_hash = request.json.get("path_hash", None)
     cmd_str = request.json.get("cmd_str")

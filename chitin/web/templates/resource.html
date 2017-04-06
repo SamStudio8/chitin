@@ -19,7 +19,7 @@
         <td>{{ cmd.status }}</td>
         <td>{{ cmd.command.timestamp }}</td>
         <td>{{ cmd.command.cmd }}</td>
-        <td>{{ cmd.command.user }}</td>
+        <td><a href="{{ url_for('user_detail', user=cmd.command.user.uuid) }}">{{ cmd.command.user.username }}</a></td>
     </tr>
     {% endfor %}
     </tbody>

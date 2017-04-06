@@ -1,4 +1,3 @@
-import getpass
 import datetime
 import os
 import uuid
@@ -295,7 +294,9 @@ class Command(db.Model):
     cmd = db.Column(db.String(512))
     cmd_uuid_str = db.Column(db.String(512))
     timestamp = db.Column(db.DateTime)
-    user = db.Column(db.String(40))
+
+    user_uuid = db.Column(db.Integer, db.ForeignKey('user.uuid'))
+    user = db.relationship('User', backref=db.backref('commands', lazy='dynamic'))
 
     block_id = db.Column(db.Integer, db.ForeignKey('command_block.uuid'))
     block = db.relationship('CommandBlock', backref=db.backref('commands', lazy='dynamic'))
@@ -314,16 +315,17 @@ class Command(db.Model):
     claimed = db.Column(db.Boolean)
     client = db.Column(db.String(40))
 
-    def __init__(self, cmd_str, cmd_block, return_code=-1, blocked_by=None):
+    def __init__(self, cmd_str, cmd_block, return_code=-1, blocked_by=None, user=None):
         self.uuid = str(uuid.uuid4())
         self.cmd = cmd_str
-        self.user = getpass.getuser()
         self.timestamp = datetime.datetime.now()
         self.block = cmd_block
         self.return_code = return_code
 
         if blocked_by:
             self.blocked_by=blocked_by
+        if user:
+            self.user = user
 
         self.active = True
         self.claimed = False
