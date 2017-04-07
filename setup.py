@@ -47,6 +47,7 @@ setuptools.setup(
         'console_scripts': [
             'chitin = chitin:shell',
             'chitin-web = chitin:make_web',
+            'chitin-daemon = chitin.daemon:daemonize',
         ]
     },
 

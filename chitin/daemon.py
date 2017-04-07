@@ -22,9 +22,6 @@ class ChitinDaemon(object):
         stdout = block["stdout"]
         stderr = block["stderr"]
 
-        #if block["cmd_block"]["show_stderr"]:
-        #    sys.stderr.write(stderr)
-
         end_clock = block["end_clock"]
         start_clock = block["start_clock"]
         return_code = block["return_code"]
@@ -181,7 +178,6 @@ class ChitinDaemon(object):
                         'node': conf.NODE_NAME,
                         'queue': 'default',
                     }, client_uuid)
-                    sleep(1)
 
                     if not block:
                         if DONE_ANYTHING and not SHELL_MODE:
@@ -251,3 +247,11 @@ class ChitinDaemon(object):
         })
 
 
+
+def daemonize(MAX_PROC=8, RES_PROC=2):
+    out_q = Queue()
+    post_q = Queue()
+    result_q = Queue()
+    daemon = Process(target=ChitinDaemon.orchestrate,
+        args=(None, out_q, post_q, result_q, MAX_PROC, RES_PROC, True, None))
+    daemon.start()

@@ -55,7 +55,6 @@ class Chitin(object):
 
         self.skip_integrity = False
         self.suppress = False
-        self.ignore_dot = False
 
         self.out_q = Queue()
         self.post_q = Queue()
@@ -68,9 +67,6 @@ class Chitin(object):
         self.show_stderr=False
 
         signal.signal(signal.SIGINT, self.signal_handler)
-        self.daemon = Process(target=daemon.ChitinDaemon.orchestrate,
-            args=(None, self.out_q, self.post_q, self.result_q, MAX_PROC, RES_PROC, SHELL_MODE, self.client_uuid))
-        self.daemon.start()
 
 
     def signal_handler(self, signal, frame):
@@ -395,7 +391,6 @@ def shell():
 
     except EOFError:
         print("Bye!")
-        c.daemon.terminate()
 
 
 def make_web():
