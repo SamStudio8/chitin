@@ -1,2 +1,3 @@
-NODE_UUID = "80b84fa7-f631-49bd-b394-0c815496907f"
+NODE_UUID = "1c8b23ab-a46e-4118-8aa9-f4525f4ad066"
+ENDPOINT = "https://chitin.ironowl.io"
 
