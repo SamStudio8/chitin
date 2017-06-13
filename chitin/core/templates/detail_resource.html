@@ -1,0 +1,113 @@
+{% include 'header.html' %}
+<div class="mast">
+    <div class="container">
+        <div class="row">
+        <div class="col-md-6">
+            <span class="badge badge-success">Resource</span>
+            {% if resource.ghost %}
+            <strike><span class="uuid-mast" style="margin-top:0; padding-top:0;">{{ resource.uuid }}</span></strike>
+            {% else %}
+            <span class="uuid-mast" style="margin-top:0; padding-top:0;">{{ resource.uuid }}</span>
+            {% endif %}
+        </div>
+        <div class="col-md-6 text-right">
+            <span class="badge badge-warning">Current Hash</span>
+            <span class="uuid-mast">{{ resource.current_hash }}</span>
+        </div>
+        </div>
+        <div class="row">
+        <div class="col-md-12">
+            {% if resource.ghost %}
+            <h2>{{ resource.full_path }} (Deleted)</h2>
+            {% else %}
+            <h2>{{ resource.full_path }}</h2>
+            {% endif %}
+        </div>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+
+<h3>History</h3>
+<table class="table table-hover table-active">
+    <thead class="thead-inverse">
+        <tr>
+            <th width="5%"></th>
+            <th>Command</th>
+            <th class="text-right" width="20%">Timestamp</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for effect in resource.command_effects | reverse %}
+    <tr>
+        <td class="text-center"><b>{{ effect.effect_status }}</b></td>
+        <td>
+            <span class="uuid-mast" style="margin-top:0; padding-top:0; display:block;"><a href="{{ url_for('command_detail', command=effect.command.uuid) }}">{{ effect.command.uuid }}</a></span>
+            <code>{{ effect.command.cmd_str }}</code>
+        </td>
+        <td class="text-right">{{ effect.command.finished_at }}</td>
+    </tr>
+    {% else %}
+    <tr>
+        <td>No history.</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<hr>
+<h3>Hash Friends</h3>
+<table class="table table-hover table-active">
+    <thead class="thead-inverse">
+        <tr>
+            <th>Path & Last Command</th>
+            <th class="text-right" width="20%">Last Seen</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for res in resource.hash_friends %}
+    <tr>
+        <td>
+            <b><a href="{{ url_for('resource_detail', resource=res.uuid) }}">{{ res.full_path }}</a></b><br>
+            <code>{{ res.last_command_effect.command.cmd_str }}</code>
+        </td>
+        <td class="text-right">{{ res.last_command_effect.command.finished_at }}</td>
+    </tr>
+    {% else %}
+    <tr>
+        <td>No friends :(</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+<hr>
+<h3>Ghosts</h3>
+<table class="table table-hover table-active">
+    <thead class="thead-inverse">
+        <tr>
+            <th>Path</th>
+            <th class="text-right" width="20%">Deleted On</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for res_ghost in resource.ghosts %}
+    <tr>
+        <td>
+            <b><a href="{{ url_for('resource_detail', resource=res_ghost.uuid) }}">{{ res_ghost.full_path }}</a></b><br>
+        </td>
+        <td class="text-right">{{ res_ghost.last_command_effect.command.finished_at }}</td>
+    </tr>
+    {% else %}
+    <tr>
+        <td>This file is not haunted.</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+</div>
+
+{% include 'footer.html' %}
+

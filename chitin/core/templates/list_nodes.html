@@ -1,0 +1,17 @@
+{% include 'header.html' %}
+
+<table class="table">
+    <thead>
+    </thead>
+    <tbody>
+    {% for node in nodes %}
+    <tr>
+        <td>{{ node.uuid }}</td>
+        <td>{{ node.name }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% include 'footer.html' %}
+

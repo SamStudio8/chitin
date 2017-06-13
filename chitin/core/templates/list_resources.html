@@ -1,0 +1,19 @@
+{% include 'header.html' %}
+
+<table class="table">
+    <thead>
+    </thead>
+    <tbody>
+    {% for resource in resources %}
+    <tr>
+        <td>{{ resource.uuid }}</td>
+        <td>{{ resource.current_node.name }}</td>
+        <td>{{ resource.current_path }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% include 'footer.html' %}
+
+
