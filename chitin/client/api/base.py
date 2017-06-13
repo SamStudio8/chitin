@@ -1,4 +1,5 @@
 import requests
+from .. import conf
 
 # This will be a proper Queue
 MESSAGES = []
@@ -6,7 +7,7 @@ MESSAGES = []
 def emit2(base_endpoint, payload, to_uuid=None):
     if to_uuid:
         base_endpoint += ("/%s" % to_uuid)
-    r = requests.post("http://localhost:5000/" + base_endpoint + '/', json=payload)
+    r = requests.post(conf.ENDPOINT + '/' + base_endpoint + '/', json=payload)
     print r.json()
 
 def emit(msg_type, payload, to_uuid=None):
