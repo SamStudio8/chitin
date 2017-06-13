@@ -304,3 +304,9 @@ class Client(object):
 #    def do(self, script):
 #        # parse meta lines for SGE too
 #        pass
+
+def exec_script():
+    import sys
+    from chitin.client import Client
+    c = Client()
+    c.execute_script(sys.argv[1])
