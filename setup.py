@@ -39,11 +39,12 @@ setuptools.setup(
     install_requires=requirements,
 
     entry_points = {
-        #'console_scripts': [
+        'console_scripts': [
+            'chitin-script = chitin.client:exec_script',
         #    'chitin = chitin:shell',
         #    'chitin-web = chitin:make_web',
         #    'chitin-daemon = chitin.daemon:daemonize',
-        #]
+        ]
     },
 
     classifiers = [
