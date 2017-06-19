@@ -279,11 +279,11 @@ class Client(object):
         #    if not job_params[p]:
         #        print("[FAIL] Unset experiment parameter '%s'. Job NOT submitted." % p)
         #        return None
-        command_sets = self.parse_script(script_path)
-        self.execute(command_sets)
+        commands_list = self.parse_script(script_path)
+        self.execute(commands_list)
 
-    def execute(self, command_sets):
-        for command_i, command in enumerate(command_sets):
+    def execute(self, commands_list):
+        for command_i, command in enumerate(commands_list):
             cmd_uuid = str(uuid.uuid4())
 
             # Collapse new command tokens to cmd_str
