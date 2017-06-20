@@ -1,5 +1,5 @@
 from chitin.core.database import db
-from chitin.core.models import Node, Resource, Command, CommandOnResource
+from chitin.core.models import Node, Resource, Command, CommandOnResource, CommandGroup
 
 def add_node(name):
     node = Node(name)
@@ -13,11 +13,17 @@ def add_resource(curr_path, curr_hash, curr_node_obj, res_uuid=None):
     db.session.commit()
     return res
 
-def add_command(cmd_str, queued_at, cmd_uuid=None):
-    cmd = Command(cmd_str, queued_at, cmd_uuid=cmd_uuid)
+def add_command(cmd_str, queued_at, group_obj, cmd_uuid=None):
+    cmd = Command(cmd_str, queued_at, group_obj, cmd_uuid=cmd_uuid)
     db.session.add(cmd)
     db.session.commit()
     return cmd
+
+def add_command_group(group_uuid=None):
+    group = CommandGroup(group_uuid=group_uuid)
+    db.session.add(group)
+    db.session.commit()
+    return group
 
 def add_command_on_resource(cmd_obj, res_obj, res_hash, effect_status):
     cor = CommandOnResource(cmd_obj, res_obj, res_hash, effect_status)

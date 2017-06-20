@@ -288,6 +288,7 @@ class Client(object):
         self.execute(commands_list)
 
     def execute(self, commands_list):
+        group_uuid = str(uuid.uuid4())
         for command_i, command in enumerate(commands_list):
             cmd_uuid = str(uuid.uuid4())
 
@@ -297,6 +298,7 @@ class Client(object):
 
             base.emit2("command", {
                 "cmd_uuid": cmd_uuid,
+                "group_uuid": group_uuid,
                 "cmd_str": cmd_str,
                 "queued_at": int(datetime.now().strftime("%s")),
             })

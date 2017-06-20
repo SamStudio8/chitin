@@ -36,6 +36,11 @@ def command_detail(command):
     command = models.Command.query.get_or_404(command)
     return render_template("detail_command.html", command=command)
 
+@app.route("/group/<group>")
+def group_detail(group):
+    group = models.CommandGroup.query.get_or_404(group)
+    return render_template("detail_group.html", group=group)
+
 ###############################################################################
 
 # Authenticate
@@ -74,11 +79,20 @@ def add_resource():
 
 @app.route("/command/", methods=["POST"])
 def add_command():
+    group_uuid = request.json.get("group_uuid")
+    group = None
+    if group_uuid:
+        group = models.CommandGroup.query.get(group_uuid)
+
+    if not group:
+        group = api.add_command_group(group_uuid=group_uuid)
+
     cmd_str = request.json.get("cmd_str")
     queued_at = datetime.fromtimestamp(request.json.get("queued_at"))
-    cmd = api.add_command(cmd_str, queued_at, cmd_uuid=request.json.get("cmd_uuid"))
+    cmd = api.add_command(cmd_str, queued_at, group, cmd_uuid=request.json.get("cmd_uuid"))
     if cmd:
         return jsonify({
+            "group_uuid": group_uuid,
             "cmd_uuid": cmd.uuid,
         }), 201
     else:

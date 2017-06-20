@@ -83,6 +83,28 @@ class Resource(db.Model):
     def ghosts(self):
         return Resource.query.filter(Resource.current_path==self.current_path, Resource.ghost==True, Resource.uuid!=self.uuid)
 
+class CommandGroup(db.Model):
+    """A group of executed commands, such as a script, or terminal session.
+    A group of commands may have been executed under test with some parameterisation.
+
+    Attributes
+    ----------
+
+    uuid : uuid.uuid4
+        The unique identifier for the CommandGroup.
+    """
+
+    uuid = db.Column(db.String(40), primary_key=True)
+
+    def __init__(self, group_uuid=None):
+        if group_uuid is None:
+            self.uuid = str(uuid.uuid4())
+        else:
+            self.uuid = group_uuid
+
+    #@property
+    #def created_at(self):
+    #    return self.commands.order_by("-queued_at")[0]
 
 class Command(db.Model):
     """An executed command.
@@ -107,6 +129,9 @@ class Command(db.Model):
 
     finished_at : datetime
         Timestamp when the Command stopped being executed.
+
+    group : CommandGroup
+        The group in which this Command belongs.
     """
 
     uuid = db.Column(db.String(40), primary_key=True)
@@ -117,7 +142,10 @@ class Command(db.Model):
     started_at = db.Column(db.DateTime)
     finished_at = db.Column(db.DateTime)
 
-    def __init__(self, cmd_str, queued_at, cmd_uuid=None):
+    group_uuid = db.Column(db.Integer, db.ForeignKey('command_group.uuid'))
+    group = db.relationship('CommandGroup', backref=db.backref('commands', lazy='dynamic'))
+
+    def __init__(self, cmd_str, queued_at, group_obj, cmd_uuid=None):
         if cmd_uuid is None:
             self.uuid = str(uuid.uuid4())
         else:
@@ -128,6 +156,8 @@ class Command(db.Model):
         self.queued_at = queued_at
         self.started_at = None
         self.finished_at = None
+
+        self.group = group_obj
 
 class CommandOnResource(db.Model):
     """A Resource, affected by a Command

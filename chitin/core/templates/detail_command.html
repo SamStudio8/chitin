@@ -7,6 +7,8 @@
             <span class="uuid-mast" style="margin-top:0; padding-top:0;">{{ command.uuid }}</span>
         </div>
         <div class="col-md-6 text-right">
+            <span class="badge badge-danger">Group</span>
+            <span class="uuid-mast" style="margin-top:0; padding-top:0;"><a href="{{ url_for('group_detail', group=command.group.uuid) }}">{{ command.group.uuid }}</a></span>
         </div>
         </div>
         <div class="row">

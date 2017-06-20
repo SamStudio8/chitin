@@ -1,0 +1,46 @@
+{% include 'header.html' %}
+<div class="mast">
+    <div class="container">
+        <div class="row">
+        <div class="col-md-6">
+            <span class="badge badge-danger">Group</span>
+            <span class="uuid-mast" style="margin-top:0; padding-top:0;">{{ group.uuid }}</span>
+        </div>
+        <div class="col-md-6 text-right">
+        </div>
+        </div>
+        <div class="row">
+        <div class="col-md-12">
+        </div>
+        </div>
+    </div>
+</div>
+
+<div class="container">
+
+<h3>Commands</h3>
+
+<table class="table table-hover table-active">
+    <thead class="thead-inverse">
+        <tr>
+        </tr>
+    </thead>
+    <tbody>
+    {% for command in group.commands %}
+    <tr>
+        <td>
+            <span class="uuid-mast" style="margin-top:0; padding-top:0; display:block;"><a href="{{ url_for('command_detail', command=command.uuid) }}">{{ command.uuid }}</a></span>
+            <code>{{ command.cmd_str }}</code>
+        </td>
+    </tr>
+    {% else %}
+    <tr>
+        <td colspan=3>No commands.</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+</div>
+
+{% include 'footer.html' %}
