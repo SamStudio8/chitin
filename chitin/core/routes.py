@@ -21,6 +21,11 @@ def resource_list():
     resources = models.Resource.query.all()
     return render_template("list_resources.html", resources=resources)
 
+@app.route("/command/")
+def command_list():
+    commands = models.Command.query.all()
+    return render_template("list_commands.html", commands=commands)
+
 @app.route("/resource/<resource>")
 def resource_detail(resource):
     resource = models.Resource.query.get_or_404(resource)
@@ -119,7 +124,7 @@ def update_command(command):
             effect_code = "C"
             res = api.add_resource(resource["path"], resource["hash"], node, res_uuid=None)
         else:
-            if resource["exists"] == False:
+            if not resource["exists"]:
                 # Deleted
                 effect_code = "D"
             elif resource["hash"] is not None and res.current_hash != resource["hash"]:

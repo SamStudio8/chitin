@@ -1,0 +1,20 @@
+{% include 'header.html' %}
+
+<div class="container">
+
+<table class="table">
+    <thead>
+    </thead>
+    <tbody>
+    {% for command in commands %}
+    <tr>
+        <td><a href="{{ url_for('command_detail', command=command.uuid) }}">{{ command.uuid }}</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+</div>
+
+{% include 'footer.html' %}
+

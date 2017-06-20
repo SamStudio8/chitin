@@ -109,6 +109,12 @@ class ClientDaemon(object):
         #for failed in check_integrity_set2(token_p["dirs"] | token_p["files"]):
         #        print("[WARN] '%s' has been modified outside of lab book." % failed)
 
+        # Organise watch lists (to keep track of deleted files later)
+        fields = cmd_str.split(" ")
+        token_p = parse_tokens(fields)
+        watched_dirs = token_p["dirs"]
+        watched_files = token_p["files"]
+
         start_clock = datetime.now()
         proc = subprocess.Popen(
                 cmd_str,
@@ -130,12 +136,12 @@ class ClientDaemon(object):
 
         #####################################
 
-        # Update field tokens
+        # Update field tokens (to find newly created files)
         fields = cmd_str.split(" ")
         token_p = parse_tokens(fields)
-        watched_dirs = token_p["dirs"]
+        watched_dirs = watched_dirs.union(token_p["dirs"])
         #watched_dirs.add(command_r["job_path"])
-        watched_files = token_p["files"]
+        watched_files = watched_files.union(token_p["files"])
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
         # Parse the output
@@ -146,10 +152,9 @@ class ClientDaemon(object):
         meta["run"] = run_meta
 
         # Look for changes
-        paths = inflate_path_set(watched_dirs | watched_files)
+        paths = inflate_path_set(watched_dirs | watched_files).union(watched_files) # Forcibly add old watched files to find deletions
         resource_info = []
         for path in paths:
-
             resource_hash = None
             resource_exists = os.path.exists(path)
             if resource_exists:
