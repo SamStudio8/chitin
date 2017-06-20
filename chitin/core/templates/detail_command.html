@@ -7,8 +7,6 @@
             <span class="uuid-mast" style="margin-top:0; padding-top:0;">{{ command.uuid }}</span>
         </div>
         <div class="col-md-6 text-right">
-            <span class="badge badge-danger">Group</span>
-            <span class="uuid-mast" style="margin-top:0; padding-top:0;"><a href="{{ url_for('group_detail', group=command.group.uuid) }}">{{ command.group.uuid }}</a></span>
         </div>
         </div>
         <div class="row">
@@ -20,6 +18,20 @@
 </div>
 
 <div class="container">
+<div style="background-color:#DDD; padding:10px; margin-bottom:15px;" class="row">
+<div class="col-md-4">
+    <span class="badge badge-danger">◄ Prev</span>
+    <span class="uuid-mast" style="margin-top:0; padding-top:0;"><a href="{{ url_for('command_detail', command=command.prev.uuid) }}">{{ command.prev.uuid }}</a></span>
+</div>
+<div class="col-md-4 text-center">
+    <span class="badge badge-warning">Group</span>
+    <span class="uuid-mast" style="margin-top:0; padding-top:0;"><a href="{{ url_for('group_detail', group=command.group.uuid) }}">{{ command.group.uuid }}</a></span>
+</div>
+<div class="col-md-4 text-right">
+    <span class="badge badge-danger">Next ►</span>
+    <span class="uuid-mast" style="margin-top:0; padding-top:0;"><a href="{{ url_for('command_detail', command=command.next.uuid) }}">{{ command.next.uuid }}</a></span>
+</div>
+</div>
 
 <h3>Meta</h3>
 

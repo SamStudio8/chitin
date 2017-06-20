@@ -13,8 +13,8 @@ def add_resource(curr_path, curr_hash, curr_node_obj, res_uuid=None):
     db.session.commit()
     return res
 
-def add_command(cmd_str, queued_at, group_obj, cmd_uuid=None):
-    cmd = Command(cmd_str, queued_at, group_obj, cmd_uuid=cmd_uuid)
+def add_command(cmd_str, queued_at, group_obj, order, cmd_uuid=None):
+    cmd = Command(cmd_str, queued_at, group_obj, order, cmd_uuid=cmd_uuid)
     db.session.add(cmd)
     db.session.commit()
     return cmd

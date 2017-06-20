@@ -301,6 +301,7 @@ class Client(object):
                 "group_uuid": group_uuid,
                 "cmd_str": cmd_str,
                 "queued_at": int(datetime.now().strftime("%s")),
+                "order": command_i,
             })
 
             # Run and handle command

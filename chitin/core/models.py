@@ -142,10 +142,12 @@ class Command(db.Model):
     started_at = db.Column(db.DateTime)
     finished_at = db.Column(db.DateTime)
 
+    order = db.Column(db.Integer)
+
     group_uuid = db.Column(db.Integer, db.ForeignKey('command_group.uuid'))
     group = db.relationship('CommandGroup', backref=db.backref('commands', lazy='dynamic'))
 
-    def __init__(self, cmd_str, queued_at, group_obj, cmd_uuid=None):
+    def __init__(self, cmd_str, queued_at, group_obj, order, cmd_uuid=None):
         if cmd_uuid is None:
             self.uuid = str(uuid.uuid4())
         else:
@@ -157,7 +159,17 @@ class Command(db.Model):
         self.started_at = None
         self.finished_at = None
 
+        self.order = order
         self.group = group_obj
+
+    @property
+    def prev(self):
+        return self.group.commands.filter(Command.order == self.order-1).first()
+
+    @property
+    def next(self):
+        return self.group.commands.filter(Command.order == self.order+1).first()
+
 
 class CommandOnResource(db.Model):
     """A Resource, affected by a Command

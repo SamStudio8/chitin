@@ -88,8 +88,9 @@ def add_command():
         group = api.add_command_group(group_uuid=group_uuid)
 
     cmd_str = request.json.get("cmd_str")
+    order = request.json.get("order", 0)
     queued_at = datetime.fromtimestamp(request.json.get("queued_at"))
-    cmd = api.add_command(cmd_str, queued_at, group, cmd_uuid=request.json.get("cmd_uuid"))
+    cmd = api.add_command(cmd_str, queued_at, group, order, cmd_uuid=request.json.get("cmd_uuid"))
     if cmd:
         return jsonify({
             "group_uuid": group_uuid,
