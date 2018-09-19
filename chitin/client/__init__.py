@@ -7,8 +7,8 @@ import os
 from datetime import datetime
 
 #import chitin.client.api as api
-from api import base
-import conf
+from .api import base
+from . import conf
 
 def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False):
 
@@ -178,8 +178,8 @@ class ClientDaemon(object):
             "meta": meta,
             "return_code": return_code,
             "text": {
-                "stdout": stdout,
-                "stderr": stderr,
+                "stdout": stdout.decode('utf-8'),
+                "stderr": stderr.decode('utf-8'),
             },
             "resources": resource_info,
             "started_at": int(start_clock.strftime("%s")),

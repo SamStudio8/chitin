@@ -7,8 +7,9 @@ MESSAGES = []
 def emit2(base_endpoint, payload, to_uuid=None):
     if to_uuid:
         base_endpoint += ("/%s" % to_uuid)
+    print(payload)
     r = requests.post(conf.ENDPOINT + '/' + base_endpoint + '/', json=payload)
-    print r.json()
+    print (r.json())
 
 def emit(msg_type, payload, to_uuid=None):
     ENDPOINTS = {
@@ -22,7 +23,7 @@ def emit(msg_type, payload, to_uuid=None):
     if to_uuid:
         endpoint += ("/%s" % to_uuid)
     r = requests.post("http://localhost:5000/" + endpoint + '/', json=payload)
-    print r.json()
+    print (r.json())
 
 def emit_messages():
     for m in MESSAGES:
