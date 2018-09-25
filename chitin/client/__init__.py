@@ -155,10 +155,12 @@ class ClientDaemon(object):
         paths = inflate_path_set(watched_dirs | watched_files).union(watched_files) # Forcibly add old watched files to find deletions
         resource_info = []
         for path in paths:
-            resource_hash = None
+            resource_hash = '0'
+            resource_size = 0
             resource_exists = os.path.exists(path)
             if resource_exists:
                 resource_hash = hashfile(path, start_clock, force_hash=False)
+                resource_size = os.path.getsize(path)
 
             resource_info.append({
                 #TODO Need a nice way to get the NODE UUID
@@ -166,6 +168,7 @@ class ClientDaemon(object):
                 "path": path,
                 "exists": resource_exists,
                 "hash": resource_hash,
+                "size": resource_size,
             })
 
         # Terrible way to run filetype handlers
@@ -174,7 +177,8 @@ class ClientDaemon(object):
         # Pretty hacky way to get the UUID cmd str
         #token_p = parse_tokens(fields, insert_uuids=True)
         #uuid_cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
-        base.emit2("command", {
+        base.emit2("command/update", {
+            "cmd_uuid": cmd_uuid,
             "meta": meta,
             "return_code": return_code,
             "text": {
@@ -184,7 +188,7 @@ class ClientDaemon(object):
             "resources": resource_info,
             "started_at": int(start_clock.strftime("%s")),
             "finished_at": int(end_clock.strftime("%s")),
-        }, to_uuid=cmd_uuid)
+        }, to_uuid=None)
 
 class Client(object):
 
@@ -296,7 +300,7 @@ class Client(object):
             token_p = parse_tokens(command.split(" "))
             cmd_str = " ".join(token_p["fields"]) # cmd_str now uses abspaths
 
-            base.emit2("command", {
+            base.emit2("command/new", {
                 "cmd_uuid": cmd_uuid,
                 "group_uuid": group_uuid,
                 "cmd_str": cmd_str,
