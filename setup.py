@@ -4,8 +4,6 @@
 import setuptools
 
 requirements = [
-    #"SQLAlchemy",
-    "flask_sqlalchemy",
     "requests",
 ]
 
@@ -15,7 +13,7 @@ test_requirements = [
 
 setuptools.setup(
     name="chitin",
-    version="0.1.0",
+    version="0.2.0",
     url="https://github.com/samstudio8/chitin",
 
     description="",
@@ -28,13 +26,6 @@ setuptools.setup(
     maintainer_email="sam@samnicholls.net",
 
     packages=setuptools.find_packages(),
-    include_package_data=True,
-
-    package_data={
-        "chitin": [
-            "core/templates/*html",
-        ]
-    },
 
     install_requires=requirements,
 
@@ -42,7 +33,6 @@ setuptools.setup(
         'console_scripts': [
             'chitin-script = chitin.client:exec_script',
         #    'chitin = chitin:shell',
-        #    'chitin-web = chitin:make_web',
         #    'chitin-daemon = chitin.daemon:daemonize',
         ]
     },
@@ -57,5 +47,4 @@ setuptools.setup(
     test_suite="tests",
     tests_require=test_requirements,
 
-    zip_safe=False, #https://github.com/pallets/flask/issues/1562
 )
