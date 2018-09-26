@@ -325,18 +325,20 @@ def exec_script():
     c = Client()
     c.execute_script(sys.argv[1])
 
-def tag(self, path, tag_name, value_name, value, value_type="str"):
-        base.emit2("resource/meta", {
-            "node_uuid": conf.NODE_UUID,
-            "path": path,
-            "timestamp": int(datetime.now().strftime("%s")),
+def tag():
+    import sys
 
-            "metadata": [
-                {
-                    "tag": tag_name,
-                    "name": value_name,
-                    "type": value_type,
-                    "value": value,
-                }
-            ],
-        })
+    base.emit2("resource/meta", {
+        "node_uuid": conf.NODE_UUID,
+        "path": sys.argv[1],
+        "timestamp": int(datetime.now().strftime("%s")),
+
+        "metadata": [
+            {
+                "tag": sys.argv[2],
+                "name": sys.argv[3],
+                "type": "str",
+                "value": sys.argv[4],
+            }
+        ],
+    })
