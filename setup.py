@@ -35,6 +35,7 @@ setuptools.setup(
     entry_points = {
         'console_scripts': [
             'chitin-script = chitin.client:exec_script',
+            'chitin-tag = chitin.client:tag',
             #'chitin = chitin:shell',
             #'chitin-daemon = chitin.daemon:daemonize',
         ]

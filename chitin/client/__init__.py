@@ -312,6 +312,8 @@ class Client(object):
             ClientDaemon.run_command(cmd_uuid, cmd_str)
 
 
+
+
 #class ChitinSGEClient(object):
 #    def do(self, script):
 #        # parse meta lines for SGE too
@@ -322,3 +324,19 @@ def exec_script():
     from chitin.client import Client
     c = Client()
     c.execute_script(sys.argv[1])
+
+def tag(self, path, tag_name, value_name, value, value_type="str"):
+        base.emit2("resource/meta", {
+            "node_uuid": conf.NODE_UUID,
+            "path": path,
+            "timestamp": int(datetime.now().strftime("%s")),
+
+            "metadata": [
+                {
+                    "tag": tag_name,
+                    "name": value_name,
+                    "type": value_type,
+                    "value": value,
+                }
+            ],
+        })
