@@ -11,19 +11,53 @@ from datetime import datetime
 from .api import base
 from . import conf
 
-def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False):
+def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False, partial_limit=10737418240, partial_sample=5368709120):
 
     mod_time = os.path.getmtime(path)
     if mod_time >= int(start_clock.strftime("%s")) or force_hash:
-        f = open(path, 'rb')
-        buff = f.read(bs)
-        halg = halg()
-        halg.update(buff)
-        while len(buff) > 0:
+
+        # For files less than 5GiB, just get on with it
+        if os.path.getsize(path) <= partial_limit:
+            f = open(path, 'rb')
             buff = f.read(bs)
+            halg = halg()
             halg.update(buff)
-        f.close()
-        return halg.hexdigest()
+            while len(buff) > 0:
+                buff = f.read(bs)
+                halg.update(buff)
+            f.close()
+            return halg.hexdigest()
+        else:
+            # I want to ensure no hashing process takes longer than 5 minutes
+            # Caveat: The longer the file is, the more sparse the samples are
+            # NOTE This is probably a fucking terrible idea
+
+            # Assuming a total of partial_sample bytes to sample for the hash,
+            # find the skip size needed to evenly sample the file with bs blocks
+            file_size_middleish = int(os.path.getsize(path)) - (2 * 100 * bs)
+            num_blocks_maxsample = (partial_sample / bs)-200  # Number of available samples
+            seek_size = int(file_size_middleish / num_blocks_maxsample) # Break the file into block pieces
+
+            # Read the first 100 blocks
+            f = open(path, 'rb')
+            halg = halg()
+            for i in range(100):
+                buff = f.read(bs)
+                halg.update(buff)
+
+            # Now seek to the evenly distributed sample points across the middleish
+            tell = f.tell()
+            for pos in range(tell, file_size_middleish + tell - bs, seek_size):
+                f.seek(pos)
+                buff = f.read(bs)
+                halg.update(buff)
+
+            # And just finish the buffer (should be ~100 blocks)
+            while len(buff) > 0:
+                buff = f.read(bs)
+                halg.update(buff)
+            f.close()
+            return halg.hexdigest()
     else:
         # The file /probably/ hasn't change, so don't bother rehashing...
         return None
