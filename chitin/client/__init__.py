@@ -11,12 +11,18 @@ from datetime import datetime
 from .api import base
 from . import conf
 
-def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False, partial_limit=10737418240, partial_sample=5368709120):
 
+import syslog
+syslog.openlog('chitind')
+
+def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False, partial_limit=10737418240, partial_sample=5368709120):
+    start_time = datetime.now()
+
+    hashed=False
     mod_time = os.path.getmtime(path)
     if mod_time >= int(start_clock.strftime("%s")) or force_hash:
 
-        # For files less than 5GiB, just get on with it
+        # For files less than partial_limit, just get on with it
         if os.path.getsize(path) <= partial_limit:
             f = open(path, 'rb')
             buff = f.read(bs)
@@ -26,7 +32,7 @@ def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False, pa
                 buff = f.read(bs)
                 halg.update(buff)
             f.close()
-            return halg.hexdigest()
+            hashed=True
         else:
             # I want to ensure no hashing process takes longer than 5 minutes
             # Caveat: The longer the file is, the more sparse the samples are
@@ -57,10 +63,21 @@ def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False, pa
                 buff = f.read(bs)
                 halg.update(buff)
             f.close()
-            return halg.hexdigest()
+            hashed=True
     else:
         # The file /probably/ hasn't change, so don't bother rehashing...
-        return None
+        pass
+
+    ret = None
+    if hashed:
+        ret = halg.hexdigest()
+
+    end_time = datetime.now()
+    hash_time = end_time - start_time
+    syslog.syslog('Hashed %s (%.2fGB in %s)' % (path, float(os.path.getsize(path)) / 1e+9, str(hash_time)))
+
+    return ret
+
 
 def parse_tokens(fields):
     dirs_l = []
