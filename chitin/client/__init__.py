@@ -3,6 +3,7 @@ import signal
 import subprocess
 import uuid
 import os
+import sys
 
 from datetime import datetime
 
@@ -87,9 +88,9 @@ def inflate_path_set(path_set):
             for subitem in os.listdir(item):
                 i_abspath = os.path.join(item, subitem)
                 if os.path.isdir(i_abspath):
+                    #TODO Do we want to keep track of the files of untargeted subfolders?
                     pass
                 else:
-                    #TODO Do we want to keep track of the files of untargeted subfolders?
                     paths.add(i_abspath)
         elif os.path.isfile(item):
             paths.add(item)
@@ -323,13 +324,53 @@ class Client(object):
 #        pass
 
 def exec_script():
-    import sys
     from chitin.client import Client
     c = Client()
     c.execute_script(sys.argv[1])
 
+
+def notice():
+    cmd_uuid = str(uuid.uuid4())
+    timestamp = datetime.now()
+    base.emit2("command/new", {
+        "cmd_uuid": cmd_uuid,
+        "cmd_str": 'chitin-notice %s' % sys.argv[1],
+        "queued_at": int(timestamp.strftime("%s"))-1,
+        "order": 0,
+    })
+    
+    resource_info = []
+    for path in inflate_path_set([sys.argv[1]]):
+        resource_hash = '0'
+        resource_size = 0
+        resource_exists = os.path.exists(path)
+        if resource_exists:
+            resource_hash = hashfile(path, timestamp, force_hash=True)
+            resource_size = os.path.getsize(path)
+
+        resource_info.append({
+            #TODO Need a nice way to get the NODE UUID
+            "node_uuid": conf.NODE_UUID,
+            "path": path,
+            "exists": resource_exists,
+            "precommand_exists": True,
+            "hash": resource_hash,
+            "size": resource_size,
+        })
+    base.emit2("command/update", {
+        "cmd_uuid": cmd_uuid,
+        "meta": {},
+        "return_code": None,
+        "text": {
+            "stdout": "",
+            "stderr": "",
+        },
+        "resources": resource_info,
+        "started_at": int(timestamp.strftime("%s")),
+        "finished_at": int(timestamp.strftime("%s")),
+    }, to_uuid=None)
+
 def tag():
-    import sys
 
     base.emit2("resource/meta", {
         "node_uuid": conf.NODE_UUID,
