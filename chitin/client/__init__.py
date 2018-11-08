@@ -115,6 +115,8 @@ class ClientDaemon(object):
         watched_dirs = token_p["dirs"]
         watched_files = token_p["files"]
 
+        precommand_paths = inflate_path_set( set(watched_files) )
+
         start_clock = datetime.now()
         proc = subprocess.Popen(
                 cmd_str,
@@ -152,14 +154,14 @@ class ClientDaemon(object):
         meta["run"] = run_meta
 
         # Look for changes
-        paths = inflate_path_set(watched_dirs | watched_files).union(watched_files) # Forcibly add old watched files to find deletions
+        paths = inflate_path_set(watched_dirs | watched_files)
         resource_info = []
         for path in paths:
             resource_hash = '0'
             resource_size = 0
             resource_exists = os.path.exists(path)
             if resource_exists:
-                resource_hash = hashfile(path, start_clock, force_hash=False)
+                resource_hash = hashfile(path, start_clock, force_hash=path in precommand_paths)
                 resource_size = os.path.getsize(path)
 
             resource_info.append({
@@ -167,6 +169,7 @@ class ClientDaemon(object):
                 "node_uuid": conf.NODE_UUID,
                 "path": path,
                 "exists": resource_exists,
+                "precommand_exists": path in precommand_paths,
                 "hash": resource_hash,
                 "size": resource_size,
             })
