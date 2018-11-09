@@ -6,6 +6,8 @@ import os
 import sys
 
 from datetime import datetime
+#from shutil import which
+from whichcraft import which # fucking python2v3 bullshit in 2018 ffs
 
 #import chitin.client.api as api
 from .api import base
@@ -82,6 +84,8 @@ def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False, pa
 def parse_tokens(fields):
     dirs_l = []
     file_l = []
+    executables = []
+
     for field_i, field in enumerate(fields):
         had_semicolon = False
         if field[-1] == ";":
@@ -97,21 +101,25 @@ def parse_tokens(fields):
         # Does the path exist? We might want to add its parent directory
         if os.path.exists(abspath):
             field_ = abspath
-            #if insert_uuids:
-            #    resource = get_resource_by_path(field_)
-            #    if resource:
-            #        field_ = "chitin://" + str(resource["uuid"])
 
             if had_semicolon:
                 fields[field_i] = field_ + ';' # Update the command to use the full abspath
             else:
                 fields[field_i] = field_ # Update the command to use the full abspath
         else:
+            # Is the field an executable in the PATH?
+            which_path = which(field)
+            if which_path:
+                executables.append(which_path)
             continue
 
         ### Files
         if os.path.isfile(abspath):
             file_l.append(abspath)
+
+            # Is the path an executable script?
+            if os.access(abspath, os.X_OK):
+                executables.append(abspath)
 
         ### Dirs
         elif os.path.isdir(abspath):
@@ -124,10 +132,18 @@ def parse_tokens(fields):
                 else:
                     #TODO Do we want to keep track of the files of subfolders?
                     pass
+
+    print {
+        "fields": fields,
+        "files": set(file_l),
+        "dirs": set(dirs_l),
+        "executables": set(executables),
+    }
     return {
         "fields": fields,
         "files": set(file_l),
         "dirs": set(dirs_l),
+        "executables": set(executables),
     }
 
 def inflate_path_set(path_set):

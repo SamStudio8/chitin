@@ -9,6 +9,7 @@ requirements = [
     "paramiko",
     "pillow",
     "requests",
+    "whichcraft",
 ]
 
 test_requirements = [
