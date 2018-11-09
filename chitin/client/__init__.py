@@ -92,6 +92,11 @@ def parse_tokens(fields):
             had_semicolon = True
             field = field.replace(";", "")
 
+        if field[0] == "~":
+            expand_field = os.path.expanduser(field)
+            if os.path.exists(expand_field):
+                field = expand_field
+
         #if field.startswith("chitin://"):
         #    resource = get_resource_by_uuid(field.split("chitin://")[1])
         #    if resource:
