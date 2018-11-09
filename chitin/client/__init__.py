@@ -138,12 +138,6 @@ def parse_tokens(fields):
                     #TODO Do we want to keep track of the files of subfolders?
                     pass
 
-    print {
-        "fields": fields,
-        "files": set(file_l),
-        "dirs": set(dirs_l),
-        "executables": set(executables),
-    }
     return {
         "fields": fields,
         "files": set(file_l),
