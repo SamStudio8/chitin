@@ -142,7 +142,7 @@ def parse_tokens(fields):
         "fields": fields,
         "files": set(file_l),
         "dirs": set(dirs_l),
-        "executables": set(executables),
+        "executables": {os.path.basename(p):p for p in set(executables)},
     }
 
 def inflate_path_set(path_set):
