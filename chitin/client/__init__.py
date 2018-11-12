@@ -11,8 +11,8 @@ from whichcraft import which # fucking python2v3 bullshit in 2018 ffs
 
 #import chitin.client.api as api
 from .api import base
+from . import cmd
 from . import conf
-
 
 import syslog
 syslog.openlog('chitind')
@@ -213,11 +213,12 @@ class ClientDaemon(object):
         watched_files = watched_files.union(token_p["files"])
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
-        # Parse the output
+        # Parse the output, apply any appropriate executable handlers
         meta = {}
-        #if cmd.can_parse(fields[0]):
-        #    parsed_meta = cmd.attempt_parse(fields[0], cmd_str, stdout, stderr)
-        #    meta.update(parsed_meta)
+        for executie_name in token_p["executables"]:
+            if cmd.can_parse_exec(executie_name):
+                parsed_meta = cmd.attempt_parse_exec(executie_name, executie_path, cmd_str, stdout, stderr)
+                meta.update(parsed_meta)
         meta["run"] = run_meta
 
         # Look for changes
@@ -231,6 +232,12 @@ class ClientDaemon(object):
                 resource_hash = hashfile(path, start_clock, force_hash=path in precommand_paths)
                 resource_size = os.path.getsize(path)
 
+                # Run any appropriate filetype handlers
+                fmeta = []
+                if cmd.can_parse_type(path):
+                    parsed_meta = cmd.attempt_parse_type(path)
+                    fmeta.extend(parsed_meta)
+
             resource_info.append({
                 #TODO Need a nice way to get the NODE UUID
                 "node_uuid": conf.NODE_UUID,
@@ -239,10 +246,8 @@ class ClientDaemon(object):
                 "precommand_exists": path in precommand_paths,
                 "hash": resource_hash,
                 "size": resource_size,
+                "metadata": fmeta,
             })
-
-        # Terrible way to run filetype handlers
-        #check_integrity_set2(watched_files)
 
         # Pretty hacky way to get the UUID cmd str
         #token_p = parse_tokens(fields, insert_uuids=True)

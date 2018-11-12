@@ -176,6 +176,21 @@ class VcfFileHandler(FiletypeHandler):
         except:
             return {}
 
+class FastaFileHandler(FiletypeHandler):
+
+    def check_integrity(self):
+        return {
+            ("not_empty", "is empty"): os.path.getsize(self.path) > 0,
+        }
+
+    def make_metadata(self):
+        from subprocess import check_output
+        try:
+            p = check_output("grep -c '^>' %s" % self.path, shell=True)
+            return {"read_n": p.split("\n")[0].strip()}
+        except:
+            return {}
+
 class FastqFileHandler(FiletypeHandler):
 
     def check_integrity(self):
