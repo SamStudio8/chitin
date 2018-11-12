@@ -51,9 +51,19 @@ def attempt_parse_exec(exec_basename, exec_path, cmd_str, stdout, stderr):
 
     #TODO Could check version here with new exec_path variable?
     handled = command_handlers[exec_basename](cmd_str.split(" ")[1:], stdout, stderr)
-    return {
+    handled_meta = {
             "cmd": handled.handle_command(),
             "stdout": handled.handle_stdout(),
             "stderr": handled.handle_stderr(),
     }
+
+    #TODO Need to support more types
+    ret = []
+    for key in handled_meta:
+        ret.extend(
+            [
+                { "tag": key, "name": k, "type": "str", "value": str(handled_meta[key][k]) } for k in handled_meta[key]
+            ]
+        )
+    return ret
 

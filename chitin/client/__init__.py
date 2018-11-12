@@ -197,7 +197,9 @@ class ClientDaemon(object):
         end_clock = datetime.now()
         return_code = proc.returncode
 
-        run_meta = {"wall": str(end_clock - start_clock)}
+        run_meta = [
+            { "tag": "meta", "name": "wall", "type": "int", "value": str(end_clock - start_clock)}
+        ]
 
         if return_code != 0:
             #TODO Future: We should do something here - like warn/stop the command?
@@ -214,29 +216,30 @@ class ClientDaemon(object):
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
         # Parse the output, apply any appropriate executable handlers
-        meta = {}
+        meta = []
         for executie_name in token_p["executables"]:
             if cmd.can_parse_exec(executie_name):
-                parsed_meta = cmd.attempt_parse_exec(executie_name, executie_path, cmd_str, stdout, stderr)
-                meta.update(parsed_meta)
-        meta["run"] = run_meta
+                parsed_meta = cmd.attempt_parse_exec(executie_name, token_p["executables"][executie_name], cmd_str, stdout, stderr)
+                meta.extend(parsed_meta)
+        meta.extend( run_meta )
 
         # Look for changes
         paths = inflate_path_set(watched_dirs | watched_files)
         resource_info = []
         for path in paths:
-            resource_hash = '0'
+            resource_hash = None
             resource_size = 0
             resource_exists = os.path.exists(path)
             if resource_exists:
                 resource_hash = hashfile(path, start_clock, force_hash=path in precommand_paths)
                 resource_size = os.path.getsize(path)
 
-                # Run any appropriate filetype handlers
+                # Run any appropriate filetype handlers IF the hash has changed
                 fmeta = []
-                if cmd.can_parse_type(path):
-                    parsed_meta = cmd.attempt_parse_type(path)
-                    fmeta.extend(parsed_meta)
+                if resource_hash:
+                    if cmd.can_parse_type(path):
+                        parsed_meta = cmd.attempt_parse_type(path)
+                        fmeta.extend(parsed_meta)
 
             resource_info.append({
                 #TODO Need a nice way to get the NODE UUID
@@ -254,7 +257,6 @@ class ClientDaemon(object):
         #uuid_cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
         base.emit2("command/update", {
             "cmd_uuid": cmd_uuid,
-            "meta": meta,
             "return_code": return_code,
             "text": {
                 "stdout": stdout.decode('utf-8'),
@@ -263,6 +265,7 @@ class ClientDaemon(object):
             "resources": resource_info,
             "started_at": int(start_clock.strftime("%s")),
             "finished_at": int(end_clock.strftime("%s")),
+            "metadata": meta,
         }, to_uuid=None)
 
 class Client(object):
