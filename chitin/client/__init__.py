@@ -448,7 +448,7 @@ def tag():
 
     base.emit2("resource/meta", {
         "node_uuid": conf.NODE_UUID,
-        "path": sys.argv[1],
+        "path": os.path.abspath(sys.argv[1]),
         "timestamp": int(datetime.now().strftime("%s")),
 
         "metadata": [
