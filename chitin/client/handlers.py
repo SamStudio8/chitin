@@ -127,7 +127,6 @@ class BamFileHandler(FiletypeHandler):
             p = check_output("samtools view -c %s" % self.path, shell=True)
             reads = int(p.split("\n")[0].strip())
         except Exception as e:
-            print e
             pass
 
         has_index = False
