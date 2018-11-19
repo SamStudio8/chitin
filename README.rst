@@ -32,13 +32,7 @@ What does it do?
 
 How do I start it?
 ------------------
-To run the shell:
-
-    $ chitin
-
-To run the terrible web interface:
-
-    $ chitin-web
+Since I trashed version 1.0 of `chitin`, I haven't decided yet.
 
 How does it work?
 -----------------
@@ -54,7 +48,7 @@ I've tried. I have scripts to generate inputs and results, but I forget to keep 
 
 Is `chitin` for me?
 -------------------
-Probably, but not yet. Thanks for taking an interest, but `chitin` is a little while away from stable.
+Probably, but not yet. Thanks for taking an interest, but `chitin` is a little while away from stable. The database schema, API and day-to-day functionality are all high-risk, check out [Issue #38](https://github.com/SamStudio8/chitin/issues/38) for progress.
 
 License
 -------
