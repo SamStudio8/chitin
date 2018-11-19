@@ -84,6 +84,7 @@ def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False, pa
 def parse_tokens(fields):
     dirs_l = []
     file_l = []
+    maybe_file_l = []
     executables = []
 
     for field_i, field in enumerate(fields):
@@ -116,6 +117,10 @@ def parse_tokens(fields):
             which_path = which(field)
             if which_path:
                 executables.append(which_path)
+
+            # Perhaps this is a file that has previously existed or is about to exist?
+            if os.path.exists(os.path.dirname(abspath)):
+                maybe_file_l.append(abspath)
             continue
 
         ### Files
@@ -142,6 +147,7 @@ def parse_tokens(fields):
         "fields": fields,
         "files": set(file_l),
         "dirs": set(dirs_l),
+        "maybe_files": set(maybe_file_l),
         "executables": {os.path.basename(p):p for p in set(executables)},
     }
 
