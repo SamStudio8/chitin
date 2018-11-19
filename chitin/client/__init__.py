@@ -408,7 +408,6 @@ def exec_script():
     c = Client()
     c.execute_script(sys.argv[1])
 
-
 def notice():
     cmd_uuid = str(uuid.uuid4())
     timestamp = datetime.now()
@@ -451,7 +450,6 @@ def notice():
     }, to_uuid=None)
 
 def tag():
-
     base.emit2("resource/meta", {
         "node_uuid": conf.NODE_UUID,
         "path": os.path.abspath(sys.argv[1]),
@@ -465,4 +463,17 @@ def tag():
                 "value": sys.argv[4],
             }
         ],
+    })
+
+def group():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("name")
+    parser.add_argument('resources', nargs='*')
+    args = parser.parse_args()
+
+    base.emit2("resource/group", {
+        "timestamp": int(datetime.now().strftime("%s")),
+        "name": args.name,
+        "resources": [ {"node_uuid": conf.NODE_UUID, "path": os.path.abspath(resource)} for resource in args.resources],
     })

@@ -38,6 +38,7 @@ setuptools.setup(
             'chitin-script = chitin.client:exec_script',
             'chitin-tag = chitin.client:tag',
             'chitin-notice = chitin.client:notice',
+            'chitin-group = chitin.client:group',
             #'chitin = chitin:shell',
             #'chitin-daemon = chitin.daemon:daemonize',
         ]
