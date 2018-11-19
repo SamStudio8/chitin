@@ -48,7 +48,7 @@ I've tried. I have scripts to generate inputs and results, but I forget to keep 
 
 Is `chitin` for me?
 -------------------
-Probably, but not yet. Thanks for taking an interest, but `chitin` is a little while away from stable. The database schema, API and day-to-day functionality are all high-risk, check out [Issue #38](https://github.com/SamStudio8/chitin/issues/38) for progress.
+Probably, but not yet. Thanks for taking an interest, but `chitin` is a little while away from stable. The database schema, API and day-to-day functionality are all high-risk, check out Issue #38 (https://github.com/SamStudio8/chitin/issues/38) for progress.
 
 License
 -------
