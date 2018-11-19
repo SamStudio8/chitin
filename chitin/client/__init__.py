@@ -470,10 +470,12 @@ def group():
     parser = argparse.ArgumentParser()
     parser.add_argument("name")
     parser.add_argument('resources', nargs='*')
+    parser.add_argument('--parents', nargs='*')
     args = parser.parse_args()
 
     base.emit2("resource/group", {
         "timestamp": int(datetime.now().strftime("%s")),
         "name": args.name,
         "resources": [ {"node_uuid": conf.NODE_UUID, "path": os.path.abspath(resource)} for resource in args.resources],
+        "parents": args.parents,
     })
