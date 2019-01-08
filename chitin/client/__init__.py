@@ -450,17 +450,36 @@ def notice():
     }, to_uuid=None)
 
 def tag():
+    import argparse
+    parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--path")
+    group.add_argument("--group")
+    parser.add_argument('tag')
+    parser.add_argument('name')
+    parser.add_argument('value')
+    args = parser.parse_args()
+
+    path = None
+    group = None
+    if args.path:
+        path = os.path.abspath(args.path)
+    elif args.group:
+        group = args.group
+
     base.emit2("resource/meta", {
         "node_uuid": conf.NODE_UUID,
-        "path": os.path.abspath(sys.argv[1]),
+
+        "path": path,
+        "group_uuid": group,
         "timestamp": int(datetime.now().strftime("%s")),
 
         "metadata": [
             {
-                "tag": sys.argv[2],
-                "name": sys.argv[3],
+                "tag": args.tag,
+                "name": args.name,
                 "type": "str",
-                "value": sys.argv[4],
+                "value": args.value,
             }
         ],
     })
