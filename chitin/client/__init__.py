@@ -4,6 +4,7 @@ import subprocess
 import uuid
 import os
 import sys
+import glob
 
 from datetime import datetime
 #from shutil import which
@@ -82,7 +83,7 @@ def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False, pa
 
 
 def parse_tokens(fields):
-    dirs_l = []
+    dirs_l = [os.path.abspath(".")] # always check the current dir, i guess?
     file_l = []
     maybe_file_l = []
     executables = []
@@ -97,6 +98,11 @@ def parse_tokens(fields):
             expand_field = os.path.expanduser(field)
             if os.path.exists(expand_field):
                 field = expand_field
+
+        if '*' in field:
+            # Let's try some fucking globbo
+            # Don't update the actual field though, because it'll probably be a fucking disaster
+            file_l.extend([os.path.abspath(x) for x in glob.glob(field)])
 
         #if field.startswith("chitin://"):
         #    resource = get_resource_by_uuid(field.split("chitin://")[1])
