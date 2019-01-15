@@ -23,55 +23,59 @@ def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False, pa
 
     hashed=False
     mod_time = os.path.getmtime(path)
-    if mod_time >= int(start_clock.strftime("%s")) or force_hash:
 
-        # For files less than partial_limit, just get on with it
-        if os.path.getsize(path) <= partial_limit:
-            f = open(path, 'rb')
+    # This seems to be causing more trouble than anything else, so just hash everything for now
+    # Best thing to do is probably attempt to fire a GET at the server and see if we have the last seen date
+    #if mod_time >= int(start_clock.strftime("%s")) or force_hash:
+    #    pass
+    #else:
+    #    # The file /probably/ hasn't change, so don't bother rehashing...
+    #    ret = 'U'
+
+    # For files less than partial_limit, just get on with it
+    if os.path.getsize(path) <= partial_limit:
+        f = open(path, 'rb')
+        buff = f.read(bs)
+        halg = halg()
+        halg.update(buff)
+        while len(buff) > 0:
             buff = f.read(bs)
-            halg = halg()
             halg.update(buff)
-            while len(buff) > 0:
-                buff = f.read(bs)
-                halg.update(buff)
-            f.close()
-            hashed=True
-        else:
-            # I want to ensure no hashing process takes longer than 5 minutes
-            # Caveat: The longer the file is, the more sparse the samples are
-            # NOTE This is probably a fucking terrible idea
-
-            # Assuming a total of partial_sample bytes to sample for the hash,
-            # find the skip size needed to evenly sample the file with bs blocks
-            file_size_middleish = int(os.path.getsize(path)) - (2 * 100 * bs)
-            num_blocks_maxsample = (partial_sample / bs)-200  # Number of available samples
-            seek_size = int(file_size_middleish / num_blocks_maxsample) # Break the file into block pieces
-
-            # Read the first 100 blocks
-            f = open(path, 'rb')
-            halg = halg()
-            for i in range(100):
-                buff = f.read(bs)
-                halg.update(buff)
-
-            # Now seek to the evenly distributed sample points across the middleish
-            tell = f.tell()
-            for pos in range(tell, file_size_middleish + tell - bs, seek_size):
-                f.seek(pos)
-                buff = f.read(bs)
-                halg.update(buff)
-
-            # And just finish the buffer (should be ~100 blocks)
-            while len(buff) > 0:
-                buff = f.read(bs)
-                halg.update(buff)
-            f.close()
-            hashed=True
+        f.close()
+        hashed=True
     else:
-        # The file /probably/ hasn't change, so don't bother rehashing...
-        pass
+        # I want to ensure no hashing process takes longer than 5 minutes
+        # Caveat: The longer the file is, the more sparse the samples are
+        # NOTE This is probably a fucking terrible idea
 
-    ret = None
+        # Assuming a total of partial_sample bytes to sample for the hash,
+        # find the skip size needed to evenly sample the file with bs blocks
+        file_size_middleish = int(os.path.getsize(path)) - (2 * 100 * bs)
+        num_blocks_maxsample = (partial_sample / bs)-200  # Number of available samples
+        seek_size = int(file_size_middleish / num_blocks_maxsample) # Break the file into block pieces
+
+        # Read the first 100 blocks
+        f = open(path, 'rb')
+        halg = halg()
+        for i in range(100):
+            buff = f.read(bs)
+            halg.update(buff)
+
+        # Now seek to the evenly distributed sample points across the middleish
+        tell = f.tell()
+        for pos in range(tell, file_size_middleish + tell - bs, seek_size):
+            f.seek(pos)
+            buff = f.read(bs)
+            halg.update(buff)
+
+        # And just finish the buffer (should be ~100 blocks)
+        while len(buff) > 0:
+            buff = f.read(bs)
+            halg.update(buff)
+        f.close()
+        hashed=True
+
+    ret = '0'
     if hashed:
         ret = halg.hexdigest()
 
@@ -83,11 +87,12 @@ def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False, pa
 
 
 def parse_tokens(fields):
-    dirs_l = [os.path.abspath(".")] # always check the current dir, i guess?
+    dirs_l = []
     file_l = []
     maybe_file_l = []
     executables = []
 
+    fields.append( os.path.abspath(".") ) # always spy on the current dir, i guess?
     for field_i, field in enumerate(fields):
         had_semicolon = False
         if field[-1] == ";":
@@ -150,7 +155,7 @@ def parse_tokens(fields):
                     pass
 
     return {
-        "fields": fields,
+        "fields": fields[:-1], # remove sneaky abspath(.) field
         "files": set(file_l),
         "dirs": set(dirs_l),
         "maybe_files": set(maybe_file_l),
@@ -225,6 +230,7 @@ class ClientDaemon(object):
         watched_dirs = watched_dirs.union(token_p["dirs"])
         #watched_dirs.add(command_r["job_path"])
         watched_files = watched_files.union(token_p["files"])
+
         cmd_str = " ".join(token_p["fields"]) # Replace cmd_str to use abspaths
 
         # Parse the output, apply any appropriate executable handlers
@@ -236,10 +242,10 @@ class ClientDaemon(object):
         meta.extend( run_meta )
 
         # Look for changes
-        paths = inflate_path_set(watched_dirs | watched_files)
+        paths = set(precommand_paths).union(set(inflate_path_set(watched_dirs | watched_files)))
         resource_info = []
         for path in paths:
-            resource_hash = None
+            resource_hash = '0'
             resource_size = 0
             resource_exists = os.path.exists(path)
             if resource_exists:
