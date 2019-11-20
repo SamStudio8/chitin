@@ -8,7 +8,8 @@ def emit2(base_endpoint, payload, to_uuid=None):
     if to_uuid:
         base_endpoint += ("/%s" % to_uuid)
     print(payload)
-    r = requests.post(conf.ENDPOINT + '/api/' + base_endpoint + '/', json=payload)
+    payload["key"] = conf.KEY
+    r = requests.post(conf.ENDPOINT + '/ocarina/api/' + base_endpoint + '/', json=payload)
     print (r.json())
 
 def emit_messages():

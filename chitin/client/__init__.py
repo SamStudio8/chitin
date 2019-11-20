@@ -1,4 +1,3 @@
-import hashlib
 import signal
 import subprocess
 import uuid
@@ -14,76 +13,8 @@ from whichcraft import which # fucking python2v3 bullshit in 2018 ffs
 from .api import base
 from . import cmd
 from . import conf
+from . import util
 
-import syslog
-syslog.openlog('chitind')
-
-def hashfile(path, start_clock, halg=hashlib.md5, bs=65536, force_hash=False, partial_limit=10737418240, partial_sample=5368709120):
-    start_time = datetime.now()
-
-    hashed=False
-    mod_time = os.path.getmtime(path)
-
-    # This seems to be causing more trouble than anything else, so just hash everything for now
-    # Best thing to do is probably attempt to fire a GET at the server and see if we have the last seen date
-    #if mod_time >= int(start_clock.strftime("%s")) or force_hash:
-    #    pass
-    #else:
-    #    # The file /probably/ hasn't change, so don't bother rehashing...
-    #    ret = 'U'
-
-    # For files less than partial_limit, just get on with it
-    if os.path.getsize(path) <= partial_limit:
-        f = open(path, 'rb')
-        buff = f.read(bs)
-        halg = halg()
-        halg.update(buff)
-        while len(buff) > 0:
-            buff = f.read(bs)
-            halg.update(buff)
-        f.close()
-        hashed=True
-    else:
-        # I want to ensure no hashing process takes longer than 5 minutes
-        # Caveat: The longer the file is, the more sparse the samples are
-        # NOTE This is probably a fucking terrible idea
-
-        # Assuming a total of partial_sample bytes to sample for the hash,
-        # find the skip size needed to evenly sample the file with bs blocks
-        file_size_middleish = int(os.path.getsize(path)) - (2 * 100 * bs)
-        num_blocks_maxsample = (partial_sample / bs)-200  # Number of available samples
-        seek_size = int(file_size_middleish / num_blocks_maxsample) # Break the file into block pieces
-
-        # Read the first 100 blocks
-        f = open(path, 'rb')
-        halg = halg()
-        for i in range(100):
-            buff = f.read(bs)
-            halg.update(buff)
-
-        # Now seek to the evenly distributed sample points across the middleish
-        tell = f.tell()
-        for pos in range(tell, file_size_middleish + tell - bs, seek_size):
-            f.seek(pos)
-            buff = f.read(bs)
-            halg.update(buff)
-
-        # And just finish the buffer (should be ~100 blocks)
-        while len(buff) > 0:
-            buff = f.read(bs)
-            halg.update(buff)
-        f.close()
-        hashed=True
-
-    ret = '0'
-    if hashed:
-        ret = halg.hexdigest()
-
-    end_time = datetime.now()
-    hash_time = end_time - start_time
-    syslog.syslog('Hashed %s (%.2fGB in %s)' % (path, float(os.path.getsize(path)) / 1e+9, str(hash_time)))
-
-    return ret
 
 
 def parse_tokens(fields):
@@ -249,7 +180,7 @@ class ClientDaemon(object):
             resource_size = 0
             resource_exists = os.path.exists(path)
             if resource_exists:
-                resource_hash = hashfile(path, start_clock, force_hash=path in precommand_paths)
+                resource_hash = util.hashfile(path, start_clock, force_hash=path in precommand_paths)
                 resource_size = os.path.getsize(path)
 
                 # Run any appropriate filetype handlers IF the hash has changed
@@ -260,9 +191,10 @@ class ClientDaemon(object):
                         fmeta.extend(parsed_meta)
 
             resource_info.append({
-                #TODO Need a nice way to get the NODE UUID
-                "node_uuid": conf.NODE_UUID,
+                "node_uuid": util.get_node(path)[1],
                 "path": path,
+                "name": os.path.basename(path),
+                "lpath": path.split(os.path.sep)[1:-1],
                 "exists": resource_exists,
                 "precommand_exists": path in precommand_paths,
                 "hash": resource_hash,
@@ -436,13 +368,15 @@ def notice():
         resource_size = 0
         resource_exists = os.path.exists(path)
         if resource_exists:
-            resource_hash = hashfile(path, timestamp, force_hash=True)
+            resource_hash = util.hashfile(path, timestamp, force_hash=True)
             resource_size = os.path.getsize(path)
 
+        node_path, node_uuid = util.get_node(path)
         resource_info.append({
-            #TODO Need a nice way to get the NODE UUID
-            "node_uuid": conf.NODE_UUID,
+            "node_uuid": node_uuid,
             "path": path,
+            "name": os.path.basename(path),
+            "lpath": node_path.split(os.path.sep)[1:-1],
             "exists": resource_exists,
             "precommand_exists": True,
             "hash": resource_hash,
@@ -480,7 +414,7 @@ def tag():
         group = args.group
 
     base.emit2("resource/meta", {
-        "node_uuid": conf.NODE_UUID,
+        "node_uuid": util.get_node(path)[1],
 
         "path": path,
         "group_uuid": group,
@@ -507,6 +441,6 @@ def group():
     base.emit2("resource/group", {
         "timestamp": int(datetime.now().strftime("%s")),
         "name": args.name,
-        "resources": [ {"node_uuid": conf.NODE_UUID, "path": os.path.abspath(resource)} for resource in args.resources],
+        "resources": [ {"node_uuid": util.get_node(os.path.abspath(resource)[1]), "path": os.path.abspath(resource)} for resource in args.resources],
         "parents": args.parents,
     })
