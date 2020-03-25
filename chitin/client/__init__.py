@@ -352,6 +352,26 @@ def exec_script():
     c = Client()
     c.execute_script(sys.argv[1])
 
+def cli():
+    if len(sys.argv) == 1:
+        print("its chitin")
+        print("ls\t\tlist the contents of this directory")
+        return
+    if sys.argv[1] == "ls":
+        if len(sys.argv) == 3:
+            path = os.path.abspath(sys.argv[2])
+        else:
+            path = os.path.abspath('.')
+        node_path, node_uuid = util.get_node(path)
+        res = base.emit2("group/view", {
+            "node_uuid": node_uuid,
+            "path": path,
+            "lpath": node_path.split(os.path.sep)[1:],
+        })
+        print(res["group"]["name"])
+        for resource in sorted(res["group"]["resources"], key=lambda x: x["name"]):
+            print("%s\t%s" % (resource["uuid"], resource["name"]))
+
 def notice():
     cmd_uuid = str(uuid.uuid4())
     timestamp = datetime.now()

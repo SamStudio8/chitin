@@ -11,6 +11,7 @@ def emit2(base_endpoint, payload, to_uuid=None):
     payload["key"] = conf.KEY
     r = requests.post(conf.ENDPOINT + '/ocarina/api/' + base_endpoint + '/', json=payload)
     print (r.json())
+    return r.json()
 
 def emit_messages():
     for m in MESSAGES:
